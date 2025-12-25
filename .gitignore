@@ -1,0 +1,19 @@
+# virtual environments
+.venv/
+venv/
+env/
+_venv/
+
+# packaging artifacts
+*.egg-info/
+build/
+dist/
+
+# Python cache
+__pycache__/
+*.py[cod]
+*$py.class
+
+# data (generated/local)
+data/
+!data/.gitkeep
