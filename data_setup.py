@@ -47,6 +47,7 @@ def main():
     print("rows:", len(df))
     print("offline rows:", len(offline))
     print("online rows:", len(online))
+    print(df.head())
 
 if __name__ == "__main__":
     main()
