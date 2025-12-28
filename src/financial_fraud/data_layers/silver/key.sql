@@ -1,7 +1,0 @@
-CREATE SCHEMA IF NOT EXISTS silver;
-
-CREATE OR REPLACE TABLE silver.keyed AS
-SELECT
-  ROW_NUMBER() OVER () AS tx_id,
-  *
-FROM bronze.raw;

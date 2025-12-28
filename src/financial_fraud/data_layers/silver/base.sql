@@ -3,7 +3,7 @@ CREATE SCHEMA IF NOT EXISTS silver;
 CREATE OR REPLACE TABLE silver.base AS
 WITH raw AS (
   SELECT
-    tx_id,
+    isFraud,
     step,
     type,
     amount,
@@ -13,11 +13,11 @@ WITH raw AS (
     nameDest,
     oldbalanceDest,
     newbalanceDest
-  FROM silver.keyed
+  FROM bronze.raw
 ),
 typed AS (
   SELECT
-    tx_id,
+    TRY_CAST(isFraud AS BIGINT) AS is_fraud,
 
     TRY_CAST(step AS BIGINT) AS step,
     NULLIF(lower(trim(CAST(type AS VARCHAR))), '') AS type,
@@ -36,6 +36,11 @@ validated AS (
   SELECT
     * REPLACE (
       CASE
+        WHEN is_fraud IN (0, 1) THEN is_fraud
+        ELSE NULL
+      END AS is_fraud,
+
+      CASE
         WHEN type IN ('payment','transfer','cash_out','debit','cash_in') THEN type
         ELSE NULL
       END AS type,
@@ -51,7 +56,7 @@ validated AS (
   FROM typed
 )
 SELECT
-  tx_id,
+  is_fraud,
   step,
   type,
   amount,
