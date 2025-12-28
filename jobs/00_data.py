@@ -13,7 +13,7 @@ from financial_fraud.data_layers.bronze.ingest import build_bronze
 from financial_fraud.logging_utils import setup_logging
 from financial_fraud.config import (
     REPO_ID,
-    OFFLINE_DATA,
+    TRANSACTION_LOG,
     TRAIN_DATA,
     DUCKDB_PATH,
 )
@@ -23,11 +23,8 @@ log = logging.getLogger(__name__)
 SILVER_SQL_PKG = "financial_fraud.data_layers.silver"
 GOLD_SQL_PKG = "financial_fraud.data_layers.gold"
 
-KEY_SQL_FILE = "key.sql"
 BASE_SQL_FILE = "base.sql"
-LABEL_SQL_FILE = "label.sql"
-FEATURES_SQL_FILE = "features.sql"
-TRAIN_SQL_FILE = "train.sql"
+TRAIN_SQL_FILE = "as_of_row.sql"
 
 
 def parse_args() -> argparse.Namespace:
@@ -53,26 +50,17 @@ def main(*, upload: bool) -> None:
     with duckdb.connect(duckdb_path) as con:
         ex = SQLExecutor(con)
 
-        log.info("Downloading bronze: repo=%s file=%s", REPO_ID, OFFLINE_DATA)
-        local_bronze = download_dataset_hf(repo_id=REPO_ID, filename=OFFLINE_DATA)
+        log.info("Downloading bronze: repo=%s file=%s", REPO_ID, TRANSACTION_LOG)
+        local_bronze = download_dataset_hf(repo_id=REPO_ID, filename=TRANSACTION_LOG)
         log.info("Bronze local path: %s", local_bronze)
 
         log.info("Building bronze")
         build_bronze(con, local_bronze)
-        
-        log.info("Running SQL stage: key")
-        ex.execute_script(ex.load_sql(SILVER_SQL_PKG, KEY_SQL_FILE))
 
         log.info("Running SQL stage: base")
         ex.execute_script(ex.load_sql(SILVER_SQL_PKG, BASE_SQL_FILE))
 
-        log.info("Running SQL stage: label")
-        ex.execute_script(ex.load_sql(SILVER_SQL_PKG, LABEL_SQL_FILE))
-
-        log.info("Running SQL stage: features")
-        ex.execute_script(ex.load_sql(GOLD_SQL_PKG, FEATURES_SQL_FILE))
-
-        log.info("Running SQL stage: train")
+        log.info("Running SQL stage: train table")
         ex.execute_script(ex.load_sql(GOLD_SQL_PKG, TRAIN_SQL_FILE))
 
         nrows = con.execute("SELECT COUNT(*) FROM gold.train").fetchone()[0]

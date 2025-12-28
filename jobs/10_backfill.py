@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+from datetime import datetime, timezone
 from pathlib import Path
 from time import perf_counter
 
@@ -20,7 +21,7 @@ from financial_fraud.io.hf import download_dataset_hf
 from financial_fraud.logging_utils import setup_logging
 from financial_fraud.redis.connect import connect_redis, redis_config
 from financial_fraud.redis.writer import write_to_redis
-from financial_fraud.redis.publisher import 
+from financial_fraud.redis.publisher import delete_version_prefix, publish_keep_one
 
 SILVER_SQL_PKG = "financial_fraud.data_layers.silver"
 GOLD_SQL_PKG = "financial_fraud.data_layers.gold"
@@ -46,8 +47,11 @@ def main() -> None:
     log.info("DuckDB path: %s", duckdb_path)
 
     redis_cfg = redis_config()
-    live_prefix = redis_cfg.base_prefix
-    log.info("Redis live_prefix: %s", live_prefix)
+    base_prefix = redis_cfg.base_prefix
+
+    run_ts = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+    run_prefix = f"{base_prefix}v{run_ts}:"
+    log.info("Redis run_prefix (staging): %s", run_prefix)
 
     with duckdb.connect(str(duckdb_path)) as con:
         ex = SQLExecutor(con)
@@ -74,7 +78,7 @@ def main() -> None:
         log.info("Connecting to Redis (%s:%s db=%s)", redis_cfg.host, redis_cfg.port, redis_cfg.db)
         r = connect_redis(redis_cfg)
 
-        try: 
+        try:
             log.info("Writing ORIG snapshot to Redis (table=%s, entity_col=%s)", ORIG_TABLE, ENTITY_ORIG_COL)
             orig_written, _ = write_to_redis(
                 con, r,
@@ -82,9 +86,8 @@ def main() -> None:
                 table=ORIG_TABLE,
                 entity_type="orig",
                 entity_col=ENTITY_ORIG_COL,
-                live_prefix=live_prefix,
+                live_prefix=run_prefix,
                 batch_size=REDIS_WRITE_BATCH_SIZE,
-                purge_missing_entities=True,
             )
 
             log.info("Writing DEST snapshot to Redis (table=%s, entity_col=%s)", DEST_TABLE, ENTITY_DEST_COL)
@@ -94,22 +97,35 @@ def main() -> None:
                 table=DEST_TABLE,
                 entity_type="dest",
                 entity_col=ENTITY_DEST_COL,
-                live_prefix=live_prefix,
+                live_prefix=run_prefix,
                 batch_size=REDIS_WRITE_BATCH_SIZE,
-                purge_missing_entities=True,
             )
+
         except Exception:
-            log.exception("Redis backfill failed; not publishing current pointer")
+            log.exception("Redis backfill failed; not publishing CURRENT")
+            try:
+                deleted = delete_version_prefix(r, prefix=run_prefix)
+                log.info("Deleted failed staging prefix: %s (deleted_entities=%s)", run_prefix, deleted)
+            except Exception:
+                log.exception("Failed to delete staging prefix: %s", run_prefix)
             raise
+
         else:
-            r.set(redis_cfg.current_pointer_key, live_prefix)
-            log.info("Published current pointer: %s -> %s", redis_cfg.current_pointer_key, live_prefix)
+            old_current = publish_keep_one(r, cfg=redis_cfg, new_prefix=run_prefix)
+            log.info("Published CURRENT: %s -> %s", redis_cfg.current_pointer_key, run_prefix)
+
+            if old_current:
+                try:
+                    deleted = delete_version_prefix(r, prefix=old_current)
+                    log.info("Deleted old CURRENT prefix: %s (deleted_entities=%s)", old_current, deleted)
+                except Exception:
+                    log.exception("Failed to delete old CURRENT prefix: %s", old_current)
 
         log.info(
-            "Redis write complete: orig_rows=%s, dest_rows=%s, current_prefix=%s",
+            "Redis write complete: orig_entities=%s, dest_entities=%s, current_prefix=%s",
             orig_written,
             dest_written,
-            live_prefix,
+            run_prefix,
         )
 
     log.info("pipeline completed in %.2fs", perf_counter() - t0)
