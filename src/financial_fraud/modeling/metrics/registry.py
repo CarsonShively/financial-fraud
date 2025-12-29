@@ -62,8 +62,9 @@ METRICS = {
     "precision": precision,
     "recall": recall,
 
-    "recall_at_top_1pct": lambda est, X, y: recall_at_top_percent(est, X, y, top_percent=0.01),
-    "recall_at_top_5pct": lambda est, X, y: recall_at_top_percent(est, X, y, top_percent=0.05),
+    "recall_at_top_1pct": lambda est, X, y, threshold=0.5: recall_at_top_percent(est, X, y, top_percent=0.01),
+    "recall_at_top_5pct": lambda est, X, y, threshold=0.5: recall_at_top_percent(est, X, y, top_percent=0.05),
+
 
     "roc_auc": roc_auc,
 }
