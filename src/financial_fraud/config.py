@@ -24,3 +24,7 @@ ENTITY_DEST_COL = "name_dest"
 LABEL_COL    = "is_fraud"
 
 FS_ENTITY_KEYS = [ENTITY_ORIG_COL, ENTITY_DEST_COL]
+
+CURRENT_ARTIFACT_VERSION = 1
+
+TRAIN_HF_PATH = "data/gold/train.parquet"

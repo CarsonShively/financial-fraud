@@ -13,6 +13,9 @@ dependencies = [
   "pyarrow>=22.0.0",
   "duckdb>=1.4.3",
   "redis>=7.1.0",
+  "scikit-learn>=1.4",
+  "lightgbm>=4.6.0",
+  "xgboost>=3.1.2",
 ]
 
 [tool.setuptools]
