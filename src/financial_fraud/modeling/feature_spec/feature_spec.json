@@ -1,0 +1,21 @@
+{
+  "features": [
+    { "name": "step", "dtype": "int" },
+    { "name": "type", "dtype": "category", "categories": ["payment","transfer","cash_out","debit","cash_in"] },
+
+    { "name": "amount", "dtype": "float" },
+
+    { "name": "orig_txn_count", "dtype": "int" },
+    { "name": "orig_amount_sum", "dtype": "float" },
+    { "name": "orig_balance_delta_sum", "dtype": "float" },
+    { "name": "orig_last_step", "dtype": "int" },
+
+    { "name": "dest_txn_count", "dtype": "int" },
+    { "name": "dest_amount_sum", "dtype": "float" },
+    { "name": "dest_balance_delta_sum", "dtype": "float" },
+    { "name": "dest_last_step", "dtype": "int" },
+
+    { "name": "orig_amount_mean", "dtype": "float" },
+    { "name": "dest_amount_mean", "dtype": "float" }
+  ]
+}
