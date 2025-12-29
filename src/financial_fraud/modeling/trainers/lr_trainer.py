@@ -2,7 +2,6 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 
-import optuna
 from sklearn.linear_model import LogisticRegression
 from sklearn.pipeline import Pipeline
 

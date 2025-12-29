@@ -49,12 +49,6 @@ def assemble_metadata_payload(
     except Exception:
         pass
 
-    try:
-        import optuna
-        meta["optuna_version"] = optuna.__version__
-    except Exception:
-        pass
-
     return meta
 
 
