@@ -4,6 +4,9 @@ from pathlib import Path
 from time import perf_counter
 import pandas as pd
 
+from sklearn.metrics import average_precision_score
+import numpy as np
+
 from sklearn.model_selection import train_test_split
 from financial_fraud.modeling.run_id import make_run_id
 from financial_fraud.modeling.metrics.report import project_metric_report
@@ -70,7 +73,7 @@ def main(*, modeltype: str, upload: bool = False) -> None:
     log.info("trainer ready: %s", modeltype)
 
     log.info("downloading train parquet from HF: repo=%s revision=%s file=%s", REPO_ID, REVISION, TRAIN_HF_PATH)
-    local_path = download_dataset_hf(repo_id=REPO_ID, filename=TRAIN_HF_PATH, revision=REVISION) #already exists doesnt re-download?
+    local_path = download_dataset_hf(repo_id=REPO_ID, filename=TRAIN_HF_PATH, revision=REVISION)
     log.info("downloaded train parquet: %s", local_path)
 
     df = pd.read_parquet(local_path)
@@ -81,18 +84,37 @@ def main(*, modeltype: str, upload: bool = False) -> None:
 
     y = df[TARGET_COL]
     X = df.drop(columns=[TARGET_COL])
-    log.info("split X shape=%s y len=%s target=%s", X.shape, len(y), TARGET_COL)
 
-    X_train, X_holdout, y_train, y_holdout = train_test_split(
-        X, y,
-        test_size=HOLDOUT_SIZE,
-        random_state=SEED,
-        stratify=y,
-    )
+    max_step = int(df["step"].max())
+    cutoff = int(max_step * (1.0 - HOLDOUT_SIZE)) 
+
+    GAP_STEPS = 24
+    train_mask = df["step"] <= (cutoff - GAP_STEPS)
+    hold_mask  = df["step"] > cutoff
+    
     log.info(
-        "train/holdout split holdout_size=%.3f train_n=%s holdout_n=%s",
-        HOLDOUT_SIZE, len(X_train), len(X_holdout),
+        "step ranges: train=[%s,%s] holdout=[%s,%s] gap_steps=%s",
+        int(df.loc[train_mask, "step"].min()),
+        int(df.loc[train_mask, "step"].max()),
+        int(df.loc[hold_mask, "step"].min()),
+        int(df.loc[hold_mask, "step"].max()),
+        GAP_STEPS,
     )
+    log.info("split overlap_steps=%s", bool(
+        set(df.loc[train_mask, "step"].unique()).intersection(set(df.loc[hold_mask, "step"].unique()))
+    ))
+
+
+    X_train = X.loc[train_mask]
+    y_train = y.loc[train_mask]
+    X_holdout = X.loc[hold_mask]
+    y_holdout = y.loc[hold_mask]
+
+    log.info(
+        "time split by step cutoff=%s max_step=%s train_n=%s holdout_n=%s holdout_frac=%.3f",
+        cutoff, max_step, len(X_train), len(X_holdout), len(X_holdout) / len(df),
+    )
+    log.info("fraud prevalence train=%.6f holdout=%.6f", float(y_train.mean()), float(y_holdout.mean()))
 
     log.info("fit best model")
     artifact, feature_names = fit_pipeline(
@@ -114,6 +136,14 @@ def main(*, modeltype: str, upload: bool = False) -> None:
     if PRIMARY_METRIC in holdout_metrics:
         log.info("holdout %s=%.6f", PRIMARY_METRIC, float(holdout_metrics[PRIMARY_METRIC]))
 
+    if hasattr(artifact, "predict_proba") or hasattr(artifact, "decision_function"):
+        y_score = artifact.predict_proba(X_holdout)[:, 1] if hasattr(artifact, "predict_proba") else artifact.decision_function(X_holdout)
+        ap_real = average_precision_score(y_holdout, y_score)
+        ap_shuf = average_precision_score(np.random.permutation(np.asarray(y_holdout)), y_score)
+        prev = float(np.mean(y_holdout))
+        log.info("sanity: prevalence=%.6f ap=%.6f ap_shuffled=%.6f", prev, ap_real, ap_shuf)
+
+    
     artifact_obj = ModelArtifact(
         run_id=run_id,
         artifact_version=CURRENT_ARTIFACT_VERSION,
