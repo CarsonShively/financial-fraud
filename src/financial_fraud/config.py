@@ -2,7 +2,7 @@ REPO_ID = "carson-shively/financial-fraud"
 REVISION = "main"
 
 TRANSACTION_LOG = "data/bronze/offline.parquet"
-ONLINE_DATA = "data/bronze/online.parquet"
+ONLINE_TRANSACTIONS = "data/bronze/online.parquet"
 
 TRAIN_DATA = "data/gold/train.parquet"
 
