@@ -4,6 +4,10 @@ venv/
 env/
 _venv/
 
+#serving venv
+.venv-serving/
+
+
 # packaging artifacts
 *.egg-info/
 build/
@@ -17,3 +21,5 @@ __pycache__/
 # data (generated/local)
 data/
 !data/.gitkeep
+
+champion.json
