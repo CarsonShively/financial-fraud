@@ -1,4 +1,5 @@
 import streamlit as st
+import pandas as pd
 
 from financial_fraud.serving.startup import (
     load_champion_model,
@@ -6,22 +7,31 @@ from financial_fraud.serving.startup import (
     download_online_logs,
 )
 from financial_fraud.serving.stream import TxnStream
-from financial_fraud.serving.transaction import transaction_to_1row_df
-from financial_fraud.serving.explain import make_top_factor_explainer, top_factor_fraud
+from financial_fraud.serving.score import score_transaction
+from financial_fraud.serving.explain import make_top_factor_explainer
 from financial_fraud.logging_utils import setup_logging
+from financial_fraud.serving.output import (
+    format_output,
+    make_log_row_from_out,
+    append_log_row_local,
+    LOG_COLS,
+)
 
 
 @st.cache_resource
 def get_model_and_ptr():
     return load_champion_model()
 
+
 @st.cache_resource
 def get_redis():
     return connect_feature_store()
 
+
 @st.cache_data
 def get_logs_path():
     return download_online_logs()
+
 
 @st.cache_resource
 def get_explainer_bundle(_model, model_run_id: str):
@@ -32,6 +42,7 @@ def get_explainer_bundle(_model, model_run_id: str):
 def init_logging():
     setup_logging()
     return True
+
 
 def get_stream() -> TxnStream:
     if "txn_stream" not in st.session_state:
@@ -48,67 +59,74 @@ def main():
     init_logging()
     st.title("Fraud Demo")
 
+    st.session_state.setdefault("log_rows", [])
+    st.session_state.setdefault("last_out", None)
+    st.session_state.setdefault("last_tx", None)
+
     model, champ = get_model_and_ptr()
     r, cfg = get_redis()
+
     current = r.get(cfg.current_pointer_key)
     if current is None:
         raise RuntimeError(f"Missing CURRENT pointer: {cfg.current_pointer_key}")
-
     run_prefix = current.decode() if isinstance(current, (bytes, bytearray)) else str(current)
-    st.caption(f"FS CURRENT: {run_prefix}")
-
-    st.caption(f"Model run: {champ.get('run_id')}")
-    st.caption(f"Redis db: {getattr(cfg, 'db', None)}")
 
     stream = get_stream()
 
-    col1, col2, col3 = st.columns(3)
+    def handle_one_event():
+        tx = stream.next_one()
+        st.session_state.last_tx = tx
+
+        if tx is None:
+            st.session_state.last_out = None
+            return
+
+        champ_run_id = str(champ.get("run_id", "unknown"))
+        explainer_bundle = get_explainer_bundle(model, champ_run_id)
+
+        result = score_transaction(
+            tx=tx,
+            r=r,
+            cfg=cfg,
+            run_prefix=run_prefix,
+            model=model,
+            explainer_bundle=explainer_bundle,
+        )
+
+        out = format_output(result, threshold=0.10)
+        st.session_state.last_out = out
+
+        row = make_log_row_from_out(out)
+        st.session_state["log_rows"] = append_log_row_local(
+            st.session_state["log_rows"],
+            row,
+            max_len=200,
+        )
+
+    col1, col2 = st.columns(2)
 
     with col1:
-        if st.button("Next txn"):
-            tx = stream.next_one()
-            st.session_state.last_tx = tx
+        if st.button("Transaction"):
+            handle_one_event()
 
     with col2:
-        n = st.number_input("Stream N", min_value=1, max_value=10000, value=100, step=50)
-        if st.button("Run N"):
-            last = None
-            for _ in range(int(n)):
-                last = stream.next_one()
-                if last is None:
-                    break
-            st.session_state.last_tx = last
-
-    with col3:
         if st.button("Reset stream"):
             stream.reset()
             st.session_state.last_tx = None
+            st.session_state.last_out = None
+            st.session_state["log_rows"] = []
 
-    st.subheader("Cursor")
-    st.json(stream.cursor())
+    out = st.session_state.get("last_out")
 
-    last_tx = st.session_state.get("last_tx")
+    if isinstance(out, (dict, list)) and out:
+        st.json(out)
+    else:
+        st.info("No transaction yet — click **Transaction** to simulate incoming event.")
 
-    st.subheader("Last transaction")
-    st.json(last_tx)
 
-    if last_tx:
-        X = transaction_to_1row_df(last_tx, r=r, cfg=cfg, live_prefix=run_prefix)
+    df = pd.DataFrame(st.session_state["log_rows"], columns=LOG_COLS)
+    st.dataframe(df.iloc[::-1], width="stretch")
 
-        proba = float(model.predict_proba(X)[0, 1])
-        st.metric("Fraud probability", proba)
-
-        spec, pre, names, explainer = get_explainer_bundle(model, champ.get("run_id", "unknown"))
-
-        factor = top_factor_fraud(
-            spec=spec,
-            pre=pre,
-            names=names,
-            explainer=explainer,
-            X_row=X,
-        )
-        st.subheader("Top factor")
-        st.write(factor)
 
 if __name__ == "__main__":
     main()
