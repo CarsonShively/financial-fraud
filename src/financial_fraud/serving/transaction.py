@@ -20,7 +20,6 @@ def transaction_to_1row_df(
     aggregates = read_entities(
         r,
         cfg=cfg,
-        live_prefix=live_prefix,
         orig_id=valid_tx["name_orig"],
         dest_id=valid_tx["name_dest"],
     )

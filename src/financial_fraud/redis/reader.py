@@ -8,14 +8,16 @@ from financial_fraud.redis.infra import RedisConfig, make_entity_key
 
 logger = logging.getLogger(__name__)
 
+
 def read_entities(
     r: redis.Redis,
     *,
     cfg: RedisConfig,
-    live_prefix: str,
     orig_id: str,
     dest_id: str,
 ) -> dict[str, dict[str, Any]]:
+    live_prefix = cfg.live_prefix
+
     orig_key = make_entity_key(live_prefix, "orig", orig_id)
     dest_key = make_entity_key(live_prefix, "dest", dest_id)
 
@@ -31,7 +33,6 @@ def read_entities(
         logger.warning("ENTITY NOT FOUND (orig): id=%s key=%s", orig_id, orig_key)
     if not dest_exists:
         logger.warning("ENTITY NOT FOUND (dest): id=%s key=%s", dest_id, dest_key)
-
 
     def decode_map(m: dict[Any, Any]) -> dict[str, str]:
         out: dict[str, str] = {}

@@ -9,6 +9,64 @@ import redis
 from financial_fraud.redis.infra import RedisConfig, make_entity_key
 
 
+def _decode_str(x) -> str:
+    if x is None:
+        return ""
+    if isinstance(x, (bytes, bytearray)):
+        return x.decode("utf-8")
+    return str(x)
+
+
+def _delete_prev_live_from_index(
+    r: redis.Redis,
+    *,
+    prefix: str,
+    entity_type: str,
+    index_key: str,
+    scan_count: int = 2000,
+    delete_batch: int = 2000,
+    use_unlink: bool = True,
+) -> int:
+    deleted = 0
+    cursor = 0
+    buf: list[str] = []
+
+    while True:
+        cursor, ids_raw = r.sscan(index_key, cursor=cursor, count=scan_count)
+
+        for x in ids_raw:
+            s = _decode_str(x)
+            if s:
+                buf.append(s)
+
+            if len(buf) >= delete_batch:
+                keys = [make_entity_key(prefix, entity_type, entity_id) for entity_id in buf]
+                pipe = r.pipeline(transaction=False)
+                if use_unlink:
+                    pipe.unlink(*keys)
+                else:
+                    pipe.delete(*keys)
+                pipe.execute()
+                deleted += len(buf)
+                buf.clear()
+
+        if cursor == 0:
+            break
+
+    if buf:
+        keys = [make_entity_key(prefix, entity_type, entity_id) for entity_id in buf]
+        pipe = r.pipeline(transaction=False)
+        if use_unlink:
+            pipe.unlink(*keys)
+        else:
+            pipe.delete(*keys)
+        pipe.execute()
+        deleted += len(buf)
+        buf.clear()
+
+    return deleted
+
+
 def write_to_redis(
     con: duckdb.DuckDBPyConnection,
     r: redis.Redis,
@@ -17,15 +75,18 @@ def write_to_redis(
     table: str,
     entity_type: str,
     entity_col: str,
-    live_prefix: str,
     batch_size: int = 1000,
+    scan_count: int = 2000,
+    delete_batch: int = 2000,
+    use_unlink: bool = True,
 ) -> tuple[int, str]:
     started_at = datetime.now(timezone.utc).isoformat()
 
+    live_prefix = cfg.live_prefix
     index_key = f"{live_prefix}{entity_type}:index"
     run_meta_key = f"{cfg.run_meta_prefix}LIVE:{entity_type}"
-    
-    r.delete(index_key)
+
+    written_rows = 0
 
     r.hset(
         run_meta_key,
@@ -37,13 +98,26 @@ def write_to_redis(
             "entity_col": entity_col,
             "started_at": started_at,
             "index_key": index_key,
-            "mode": "single_state_overwrite",
+            "mode": "overwrite_live_status_gated",
         },
     )
 
-    written_rows = 0
-
     try:
+        deleted_prev = _delete_prev_live_from_index(
+            r,
+            prefix=live_prefix,
+            entity_type=entity_type,
+            index_key=index_key,
+            scan_count=scan_count,
+            delete_batch=delete_batch,
+            use_unlink=use_unlink,
+        )
+
+        if use_unlink:
+            r.unlink(index_key)
+        else:
+            r.delete(index_key)
+
         cur = con.execute(f"SELECT * FROM {table}")
         cols = [d[0] for d in cur.description]
 
@@ -79,11 +153,8 @@ def write_to_redis(
                 if not mapping:
                     continue
 
-                pipe.delete(key)
                 pipe.hset(key, mapping=mapping)
-
                 pipe.sadd(index_key, entity_id)
-
                 written_rows += 1
 
             pipe.execute()
@@ -93,10 +164,11 @@ def write_to_redis(
         r.hset(
             run_meta_key,
             mapping={
-                "status": "PUBLISHED",
+                "status": "READY",
                 "rows_written": str(written_rows),
                 "unique_entities": str(unique_entities),
-                "published_at": datetime.now(timezone.utc).isoformat(),
+                "deleted_prev_entities": str(deleted_prev),
+                "ready_at": datetime.now(timezone.utc).isoformat(),
             },
         )
 
@@ -104,7 +176,6 @@ def write_to_redis(
 
     except Exception as e:
         unique_entities = r.scard(index_key)
-
         r.hset(
             run_meta_key,
             mapping={

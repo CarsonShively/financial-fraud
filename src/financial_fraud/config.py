@@ -8,15 +8,13 @@ TRAIN_DATA = "data/gold/train.parquet"
 
 DUCKDB_PATH = "data/db/fraud.duckdb"
 
-REDIS_HOST = "localhost"
-REDIS_PORT = 6379
+REDIS_HOST = "127.0.0.1"
+REDIS_PORT = 6380
 REDIS_DB = 1
 
 REDIS_BASE_PREFIX = "fraud:features:"
 REDIS_CURRENT_POINTER_KEY = "fraud:features:CURRENT"
 REDIS_RUN_META_PREFIX = "fraud:features:RUN_META:"
-
-REDIS_TTL_SECONDS = 0
 
 ENTITY_ORIG_COL = "name_orig"
 ENTITY_DEST_COL = "name_dest"
