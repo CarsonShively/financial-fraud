@@ -2,11 +2,15 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 from typing import Any
+import logging
+from time import perf_counter
 
 import duckdb
 import redis
 
 from financial_fraud.redis.infra import RedisConfig, make_entity_key
+
+log = logging.getLogger(__name__)
 
 
 def _decode_str(x) -> str:
@@ -15,6 +19,10 @@ def _decode_str(x) -> str:
     if isinstance(x, (bytes, bytearray)):
         return x.decode("utf-8")
     return str(x)
+
+
+def _ms(t0: float) -> int:
+    return int((perf_counter() - t0) * 1000)
 
 
 def _delete_prev_live_from_index(
@@ -31,8 +39,13 @@ def _delete_prev_live_from_index(
     cursor = 0
     buf: list[str] = []
 
+    t_all = perf_counter()
+    log.info("redis_backfill.delete_prev start entity_type=%s index_key=%s", entity_type, index_key)
+
     while True:
+        t0 = perf_counter()
         cursor, ids_raw = r.sscan(index_key, cursor=cursor, count=scan_count)
+        log.debug("redis_backfill.sscan %dms cursor=%s n=%d", _ms(t0), cursor, len(ids_raw))
 
         for x in ids_raw:
             s = _decode_str(x)
@@ -40,6 +53,7 @@ def _delete_prev_live_from_index(
                 buf.append(s)
 
             if len(buf) >= delete_batch:
+                t0 = perf_counter()
                 keys = [make_entity_key(prefix, entity_type, entity_id) for entity_id in buf]
                 pipe = r.pipeline(transaction=False)
                 if use_unlink:
@@ -49,11 +63,13 @@ def _delete_prev_live_from_index(
                 pipe.execute()
                 deleted += len(buf)
                 buf.clear()
+                log.info("redis_backfill.delete_batch %dms deleted=%d", _ms(t0), deleted)
 
         if cursor == 0:
             break
 
     if buf:
+        t0 = perf_counter()
         keys = [make_entity_key(prefix, entity_type, entity_id) for entity_id in buf]
         pipe = r.pipeline(transaction=False)
         if use_unlink:
@@ -63,7 +79,9 @@ def _delete_prev_live_from_index(
         pipe.execute()
         deleted += len(buf)
         buf.clear()
+        log.info("redis_backfill.delete_batch %dms deleted=%d", _ms(t0), deleted)
 
+    log.info("redis_backfill.delete_prev done %dms deleted=%d", _ms(t_all), deleted)
     return deleted
 
 
@@ -87,6 +105,13 @@ def write_to_redis(
     run_meta_key = f"{cfg.run_meta_prefix}LIVE:{entity_type}"
 
     written_rows = 0
+    phase = "init"
+    t_all = perf_counter()
+
+    log.info(
+        "redis_backfill.start table=%s entity_type=%s entity_col=%s batch=%d prefix=%s",
+        table, entity_type, entity_col, batch_size, live_prefix,
+    )
 
     r.hset(
         run_meta_key,
@@ -103,6 +128,8 @@ def write_to_redis(
     )
 
     try:
+        phase = "delete_prev"
+        t0 = perf_counter()
         deleted_prev = _delete_prev_live_from_index(
             r,
             prefix=live_prefix,
@@ -112,27 +139,42 @@ def write_to_redis(
             delete_batch=delete_batch,
             use_unlink=use_unlink,
         )
+        log.info("redis_backfill.delete_prev_phase %dms deleted_prev=%d", _ms(t0), deleted_prev)
 
+        phase = "delete_index_key"
+        t0 = perf_counter()
         if use_unlink:
             r.unlink(index_key)
         else:
             r.delete(index_key)
+        log.info("redis_backfill.delete_index_key %dms", _ms(t0))
 
+        phase = "duckdb_execute"
+        t0 = perf_counter()
         cur = con.execute(f"SELECT * FROM {table}")
         cols = [d[0] for d in cur.description]
+        log.info("redis_backfill.duckdb_execute %dms cols=%d", _ms(t0), len(cols))
 
         if entity_col not in cols:
             raise ValueError(f"{table} must include entity column '{entity_col}'")
 
         entity_idx = cols.index(entity_col)
 
+        phase = "write_batches"
+        batch_no = 0
         while True:
+            t_fetch = perf_counter()
             rows = cur.fetchmany(batch_size)
+            log.debug("redis_backfill.fetchmany %dms n=%d", _ms(t_fetch), len(rows))
+
             if not rows:
                 break
 
+            batch_no += 1
+            t_batch = perf_counter()
             pipe = r.pipeline(transaction=False)
 
+            batch_written = 0
             for row in rows:
                 entity = row[entity_idx]
                 if entity is None:
@@ -156,11 +198,21 @@ def write_to_redis(
                 pipe.hset(key, mapping=mapping)
                 pipe.sadd(index_key, entity_id)
                 written_rows += 1
+                batch_written += 1
 
+            t_exec = perf_counter()
             pipe.execute()
+            log.info(
+                "redis_backfill.batch %dms batch_no=%d wrote=%d total=%d exec=%dms",
+                _ms(t_batch), batch_no, batch_written, written_rows, _ms(t_exec),
+            )
 
+        phase = "finalize_counts"
+        t0 = perf_counter()
         unique_entities = r.scard(index_key)
+        log.info("redis_backfill.scard %dms unique=%d", _ms(t0), unique_entities)
 
+        phase = "meta_ready"
         r.hset(
             run_meta_key,
             mapping={
@@ -172,18 +224,30 @@ def write_to_redis(
             },
         )
 
+        log.info(
+            "redis_backfill.done %dms rows_written=%d unique=%d deleted_prev=%d",
+            _ms(t_all), written_rows, unique_entities, deleted_prev,
+        )
         return written_rows, live_prefix
 
     except Exception as e:
-        unique_entities = r.scard(index_key)
-        r.hset(
-            run_meta_key,
-            mapping={
-                "status": "FAILED",
-                "error": repr(e),
-                "failed_at": datetime.now(timezone.utc).isoformat(),
-                "rows_written": str(written_rows),
-                "unique_entities": str(unique_entities),
-            },
+        log.exception(
+            "redis_backfill.fail phase=%s rows_written=%d table=%s entity_type=%s entity_col=%s",
+            phase, written_rows, table, entity_type, entity_col,
         )
+        try:
+            unique_entities = r.scard(index_key)
+            r.hset(
+                run_meta_key,
+                mapping={
+                    "status": "FAILED",
+                    "error": repr(e),
+                    "failed_at": datetime.now(timezone.utc).isoformat(),
+                    "rows_written": str(written_rows),
+                    "unique_entities": str(unique_entities),
+                    "failed_phase": phase,
+                },
+            )
+        except Exception:
+            log.exception("redis_backfill.fail_meta_write phase=%s", phase)
         raise
