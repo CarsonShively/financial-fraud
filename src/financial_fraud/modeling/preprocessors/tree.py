@@ -6,35 +6,48 @@ from sklearn.compose import ColumnTransformer
 
 
 def preprocessor() -> ColumnTransformer:
-    cat_ohe = ["type"]
     type_categories = [["payment", "transfer", "cash_out", "debit", "cash_in", "unknown"]]
 
-    num_log1p_scale = [
-        "amount",
-        "orig_txn_count", "orig_amount_sum",
-        "dest_txn_count", "dest_amount_sum",
-        "orig_amount_mean", "dest_amount_mean",
+    OHE_COLS = [
+        "type",
     ]
 
-    num_scale_only = [
-        "step", "orig_last_step", "dest_last_step",
-        "orig_balance_delta_sum", "dest_balance_delta_sum",
+    IMPUTE_INT_COLS = [
+        "step",
+        "dest_txn_count_1h",
+        "dest_txn_count_24h",
+    ]
+
+    IMPUTE_FLOAT_COLS = [
+        "amount",
+        "orig_balance_delta",
+        "orig_delta_minus_amount",
+        "dest_balance_delta",
+        "dest_delta_minus_amount",
+        "dest_amount_sum_1h",
+        "dest_amount_sum_24h",
+        "dest_amount_mean_24h",
+        "dest_last_gap_hours",
     ]
 
     ohe_pipeline = Pipeline(
         steps=[
             ("imputer", SimpleImputer(strategy="constant", fill_value="unknown")),
-            ("ohe", OneHotEncoder(categories=type_categories, handle_unknown="ignore", sparse_output=False)),
+            ("ohe", OneHotEncoder(
+                categories=type_categories,
+                handle_unknown="ignore",
+                sparse_output=False,
+            )),
         ]
     )
 
-    log1p_scaler_pipeline = Pipeline(
+    int_pipeline = Pipeline(
         steps=[
-            ("imputer", SimpleImputer(strategy="constant", fill_value=0.0)),
+            ("imputer", SimpleImputer(strategy="constant", fill_value=0)),
         ]
     )
 
-    scaler_pipeline = Pipeline(
+    float_pipeline = Pipeline(
         steps=[
             ("imputer", SimpleImputer(strategy="constant", fill_value=0.0)),
         ]
@@ -42,9 +55,9 @@ def preprocessor() -> ColumnTransformer:
 
     return ColumnTransformer(
         transformers=[
-            ("cat", ohe_pipeline, cat_ohe),
-            ("num_log1p", log1p_scaler_pipeline, num_log1p_scale),
-            ("num", scaler_pipeline, num_scale_only),
+            ("cat", ohe_pipeline, OHE_COLS),
+            ("int", int_pipeline, IMPUTE_INT_COLS),
+            ("float", float_pipeline, IMPUTE_FLOAT_COLS),
         ],
         remainder="drop",
         verbose_feature_names_out=True,

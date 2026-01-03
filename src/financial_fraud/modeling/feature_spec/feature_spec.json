@@ -2,20 +2,21 @@
   "features": [
     { "name": "step", "dtype": "int" },
     { "name": "type", "dtype": "category", "categories": ["payment","transfer","cash_out","debit","cash_in"] },
-
     { "name": "amount", "dtype": "float" },
 
-    { "name": "orig_txn_count", "dtype": "int" },
-    { "name": "orig_amount_sum", "dtype": "float" },
-    { "name": "orig_balance_delta_sum", "dtype": "float" },
-    { "name": "orig_last_step", "dtype": "int" },
+    { "name": "orig_balance_delta", "dtype": "float" },
+    { "name": "orig_delta_minus_amount", "dtype": "float" },
 
-    { "name": "dest_txn_count", "dtype": "int" },
-    { "name": "dest_amount_sum", "dtype": "float" },
-    { "name": "dest_balance_delta_sum", "dtype": "float" },
-    { "name": "dest_last_step", "dtype": "int" },
+    { "name": "dest_balance_delta", "dtype": "float" },
+    { "name": "dest_delta_minus_amount", "dtype": "float" },
 
-    { "name": "orig_amount_mean", "dtype": "float" },
-    { "name": "dest_amount_mean", "dtype": "float" }
+    { "name": "dest_txn_count_1h", "dtype": "int" },
+    { "name": "dest_txn_count_24h", "dtype": "int" },
+
+    { "name": "dest_amount_sum_1h", "dtype": "float" },
+    { "name": "dest_amount_sum_24h", "dtype": "float" },
+
+    { "name": "dest_amount_mean_24h", "dtype": "float" },
+    { "name": "dest_last_gap_hours", "dtype": "float" }
   ]
 }
