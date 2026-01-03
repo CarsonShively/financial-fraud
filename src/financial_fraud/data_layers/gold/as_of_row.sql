@@ -25,99 +25,64 @@ feat AS (
     b.name_orig,
     b.name_dest,
 
-    -- ----------------------------
-    -- ORIG (sender) cumulative state (as-of-row)
-    -- ----------------------------
-    COALESCE(
-      COUNT(*) OVER (
-        PARTITION BY b.name_orig
-        ORDER BY b.step
-        ROWS BETWEEN UNBOUNDED PRECEDING AND 1 PRECEDING
-      ),
-      0
-    ) AS orig_txn_count,
+    (b.oldbalance_orig - b.newbalance_orig) AS orig_balance_delta,
+    ((b.oldbalance_orig - b.newbalance_orig) - b.amount) AS orig_delta_minus_amount,
 
-    COALESCE(
-      SUM(b.amount) OVER (
-        PARTITION BY b.name_orig
-        ORDER BY b.step
-        ROWS BETWEEN UNBOUNDED PRECEDING AND 1 PRECEDING
-      ),
-      0.0
-    ) AS orig_amount_sum,
+    (b.newbalance_dest - b.oldbalance_dest) AS dest_balance_delta,
+    ((b.newbalance_dest - b.oldbalance_dest) - b.amount) AS dest_delta_minus_amount,
 
-    COALESCE(
-      SUM(b.newbalance_orig - b.oldbalance_orig) OVER (
-        PARTITION BY b.name_orig
-        ORDER BY b.step
-        ROWS BETWEEN UNBOUNDED PRECEDING AND 1 PRECEDING
-      ),
-      0.0
-    ) AS orig_balance_delta_sum,
+    COALESCE(COUNT(*) OVER w_dest_1h, 0) AS dest_txn_count_1h,
+    COALESCE(COUNT(*) OVER w_dest_24h, 0) AS dest_txn_count_24h,
 
-    COALESCE(
-      MAX(b.step) OVER (
-        PARTITION BY b.name_orig
-        ORDER BY b.step
-        ROWS BETWEEN UNBOUNDED PRECEDING AND 1 PRECEDING
-      ),
-      NULL
-    ) AS orig_last_step,
+    COALESCE(SUM(b.amount) OVER w_dest_1h, 0.0) AS dest_amount_sum_1h,
+    COALESCE(SUM(b.amount) OVER w_dest_24h, 0.0) AS dest_amount_sum_24h,
 
-    -- ----------------------------
-    -- DEST (receiver) cumulative state (as-of-row)
-    -- ----------------------------
-    COALESCE(
-      COUNT(*) OVER (
-        PARTITION BY b.name_dest
-        ORDER BY b.step
-        ROWS BETWEEN UNBOUNDED PRECEDING AND 1 PRECEDING
-      ),
-      0
-    ) AS dest_txn_count,
-
-    COALESCE(
-      SUM(b.amount) OVER (
-        PARTITION BY b.name_dest
-        ORDER BY b.step
-        ROWS BETWEEN UNBOUNDED PRECEDING AND 1 PRECEDING
-      ),
-      0.0
-    ) AS dest_amount_sum,
-
-    COALESCE(
-      SUM(b.newbalance_dest - b.oldbalance_dest) OVER (
-        PARTITION BY b.name_dest
-        ORDER BY b.step
-        ROWS BETWEEN UNBOUNDED PRECEDING AND 1 PRECEDING
-      ),
-      0.0
-    ) AS dest_balance_delta_sum,
-
-    COALESCE(
-      MAX(b.step) OVER (
-        PARTITION BY b.name_dest
-        ORDER BY b.step
-        ROWS BETWEEN UNBOUNDED PRECEDING AND 1 PRECEDING
-      ),
-      NULL
-    ) AS dest_last_step
+    MAX(b.step) OVER (
+      PARTITION BY b.name_dest
+      ORDER BY b.step
+      ROWS BETWEEN UNBOUNDED PRECEDING AND 1 PRECEDING
+    ) AS dest_last_seen_step
 
   FROM base b
+
+  WINDOW
+    w_dest_1h AS (
+      PARTITION BY b.name_dest
+      ORDER BY b.step
+      RANGE BETWEEN 1 PRECEDING AND 1 PRECEDING
+    ),
+    w_dest_24h AS (
+      PARTITION BY b.name_dest
+      ORDER BY b.step
+      RANGE BETWEEN 24 PRECEDING AND 1 PRECEDING
+    )
 )
 
 SELECT
-  *,
-  -- ----------------------------
-  -- Derived means (avoid divide-by-zero)
-  -- ----------------------------
-  CASE
-    WHEN orig_txn_count > 0 THEN orig_amount_sum / orig_txn_count
-    ELSE 0.0
-  END AS orig_amount_mean,
+  is_fraud,
+  step,
+  type,
+  amount,
+  name_orig,
+  name_dest,
+
+  orig_balance_delta,
+  orig_delta_minus_amount,
+  dest_balance_delta,
+  dest_delta_minus_amount,
+
+  dest_txn_count_1h,
+  dest_txn_count_24h,
+  dest_amount_sum_1h,
+  dest_amount_sum_24h,
 
   CASE
-    WHEN dest_txn_count > 0 THEN dest_amount_sum / dest_txn_count
+    WHEN dest_txn_count_24h > 0 THEN dest_amount_sum_24h / dest_txn_count_24h
     ELSE 0.0
-  END AS dest_amount_mean
+  END AS dest_amount_mean_24h,
+
+  CASE
+    WHEN dest_last_seen_step IS NULL THEN NULL
+    ELSE (step - dest_last_seen_step)
+  END AS dest_last_gap_hours
 FROM feat;
