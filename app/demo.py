@@ -1,38 +1,18 @@
 import streamlit as st
 import pandas as pd
-
-import logging
-from time import perf_counter
+from streamlit_autorefresh import st_autorefresh
 
 from financial_fraud.serving.startup import (
     load_champion_model,
     connect_feature_store,
-    download_online_logs,
+    register_lua_scripts,
 )
-from financial_fraud.serving.stream import TxnStream
-from financial_fraud.serving.score import score_transaction
-from financial_fraud.serving.explain import make_top_factor_explainer
-from financial_fraud.logging_utils import setup_logging
-from financial_fraud.serving.output import (
-    format_output,
-    make_log_row_from_out,
-    append_log_row_local,
-    LOG_COLS,
-)
-
-log = logging.getLogger(__name__)
-
-
-def _ms(t0: float) -> int:
-    return int((perf_counter() - t0) * 1000)
-
-
-def _log_step(name: str, t0: float, **kv) -> None:
-    extras = " ".join(f"{k}={v}" for k, v in kv.items() if v is not None)
-    if extras:
-        log.info("%s %dms %s", name, _ms(t0), extras)
-    else:
-        log.info("%s %dms", name, _ms(t0))
+from financial_fraud.config import ONLINE_TRANSACTIONS, REPO_ID
+from financial_fraud.io.hf import download_dataset_hf
+from financial_fraud.serving.steps.explain import top_factor_explainer
+from financial_fraud.stream.stream import TxnStream
+from financial_fraud.serving.serve import serve
+from financial_fraud.stream.build_log import local_log
 
 
 @st.cache_resource
@@ -45,147 +25,126 @@ def get_redis():
     return connect_feature_store()
 
 
-@st.cache_data
-def get_logs_path():
-    return download_online_logs()
+@st.cache_resource
+def get_lua_shas():
+    r, _ = get_redis()
+    return register_lua_scripts(r)
 
 
 @st.cache_resource
 def get_explainer_bundle(_model, model_run_id: str):
-    return make_top_factor_explainer(_model)
+    return top_factor_explainer(_model)
 
 
-@st.cache_resource
-def init_logging():
-    setup_logging()
-    return True
+@st.cache_data
+def get_logs_path(repo_id: str, filename: str, revision: str | None = None) -> str:
+    return download_dataset_hf(repo_id=repo_id, filename=filename, revision=revision)
 
 
-def get_stream() -> TxnStream:
-    if "txn_stream" not in st.session_state:
-        t0 = perf_counter()
-        logs_path = get_logs_path()
-        _log_step("get_logs_path", t0)
-
-        t0 = perf_counter()
-        st.session_state.txn_stream = TxnStream(
-            parquet_path=logs_path,
-            start_step=None,
-            batch_size=2048,
+def get_stream(parquet_path: str, start_step: int | None, batch_size: int) -> TxnStream:
+    if "stream" not in st.session_state:
+        st.session_state["stream"] = TxnStream(
+            parquet_path=parquet_path,
+            start_step=start_step,
+            batch_size=batch_size,
         )
-        _log_step("stream_init", t0, batch_size=2048)
-    return st.session_state.txn_stream
+    return st.session_state["stream"]
+
+
+def reset_stream(parquet_path: str, start_step: int | None, batch_size: int) -> None:
+    st.session_state["stream"] = TxnStream(
+        parquet_path=parquet_path,
+        start_step=start_step,
+        batch_size=batch_size,
+    )
+    st.session_state["last_out"] = None
+    st.session_state["log_rows"] = []
+    st.session_state["is_streaming"] = False
+
+
+def handle_transaction(*, stream: TxnStream, deps) -> None:
+    tx = stream.next_one()
+    if tx is None:
+        st.session_state["last_out"] = None
+        st.session_state["is_streaming"] = False
+        return
+
+    result = serve(
+        tx,
+        r=deps["r"],
+        cfg=deps["cfg"],
+        model=deps["model"],
+        explainer_bundle=deps["explainer_bundle"],
+        lua_shas=deps["lua_shas"],
+    )
+
+    if result is None:
+        st.session_state["last_out"] = {
+            "skipped": True,
+            "message": "Transaction failed validation.",
+        }
+        return
+
+    out, log = result
+    st.session_state["last_out"] = out
+    st.session_state["log_rows"] = local_log(st.session_state["log_rows"], log, max_len=200)
 
 
 def main():
-    t0 = perf_counter()
-    init_logging()
-    _log_step("init_logging", t0)
-
     st.title("Fraud Demo")
 
     st.session_state.setdefault("log_rows", [])
     st.session_state.setdefault("last_out", None)
-    st.session_state.setdefault("last_tx", None)
+    st.session_state.setdefault("is_streaming", False)
 
-    t0 = perf_counter()
-    model, champ = get_model_and_ptr()
-    _log_step("load_model", t0, champ_run_id=champ.get("run_id", "unknown"))
+    model, champ_ptr = get_model_and_ptr()
+    run_id = str(champ_ptr.get("run_id", champ_ptr.get("path_in_repo", "unknown")))
+    explainer_bundle = get_explainer_bundle(model, run_id)
 
-    t0 = perf_counter()
     r, cfg = get_redis()
-    _log_step("connect_redis", t0, host=getattr(cfg, "host", None), db=getattr(cfg, "db", None))
+    lua_shas = get_lua_shas()
 
-    t0 = perf_counter()
-    current = r.get(cfg.current_pointer_key)
-    if current is None:
-        raise RuntimeError(f"Missing CURRENT pointer: {cfg.current_pointer_key}")
-    run_prefix = current.decode() if isinstance(current, (bytes, bytearray)) else str(current)
-    _log_step("read_current_ptr", t0, run_prefix=run_prefix)
+    logs_path = get_logs_path(REPO_ID, ONLINE_TRANSACTIONS, revision=None)
 
-    t0 = perf_counter()
-    stream = get_stream()
-    _log_step("get_stream", t0)
+    start_step = None
+    batch_size = 2048
+    stream = get_stream(logs_path, start_step=start_step, batch_size=batch_size)
 
-    def handle_one_event():
-        t_evt = perf_counter()
+    deps = {
+        "model": model,
+        "r": r,
+        "cfg": cfg,
+        "lua_shas": lua_shas,
+        "explainer_bundle": explainer_bundle,
+    }
 
-        t0 = perf_counter()
-        tx = stream.next_one()
-        _log_step("stream_next_one", t0, empty=(tx is None))
-        st.session_state.last_tx = tx
-
-        if tx is None:
-            st.session_state.last_out = None
-            _log_step("event_done", t_evt, skipped="eof_or_none")
-            return
-
-        champ_run_id = str(champ.get("run_id", "unknown"))
-
-        t0 = perf_counter()
-        explainer_bundle = get_explainer_bundle(model, champ_run_id)
-        _log_step("get_explainer", t0, champ_run_id=champ_run_id)
-
-        t0 = perf_counter()
-        result = score_transaction(
-            tx=tx,
-            r=r,
-            cfg=cfg,
-            model=model,
-            explainer_bundle=explainer_bundle,
-        )
-        _log_step("score_transaction", t0, ok=(result is not None))
-
-        if result is None:
-            st.session_state.last_out = {
-                "skipped": True,
-                "reason": "invalid_entity",
-                "message": "Missing/invalid name_orig or name_dest",
-            }
-            _log_step("event_done", t_evt, skipped="invalid_entity")
-            return
-
-        t0 = perf_counter()
-        out = format_output(result, threshold=0.10)
-        st.session_state.last_out = out
-        _log_step("format_output", t0, fraud=(out.get("fraud") if isinstance(out, dict) else None))
-
-        t0 = perf_counter()
-        row = make_log_row_from_out(out)
-        st.session_state["log_rows"] = append_log_row_local(
-            st.session_state["log_rows"],
-            row,
-            max_len=200,
-        )
-        _log_step("append_log", t0, n=len(st.session_state["log_rows"]))
-
-        _log_step("event_done", t_evt)
-
-    col1, col2 = st.columns(2)
-
-    with col1:
-        if st.button("Transaction"):
-            handle_one_event()
-            
-        out = st.session_state.get("last_out")
-
-        if isinstance(out, dict) and out.get("skipped"):
-            st.warning(out.get("message", "Skipped transaction"))
-        elif isinstance(out, (dict, list)) and out:
-            st.json(out)
-        else:
-            st.info("No transaction yet — click **Transaction** to simulate incoming event.")
-
-    with col2:
+    c1, c2, c3, c4 = st.columns(4)
+    with c1:
+        if st.button("Transaction", disabled=st.session_state["is_streaming"]):
+            handle_transaction(stream=stream, deps=deps)
+    with c2:
+        if st.button("Start (2s)"):
+            st.session_state["is_streaming"] = True
+    with c3:
+        if st.button("Stop"):
+            st.session_state["is_streaming"] = False
+    with c4:
         if st.button("Reset stream"):
-            t0 = perf_counter()
-            stream.reset()
-            st.session_state.last_tx = None
-            st.session_state.last_out = None
-            st.session_state["log_rows"] = []
-            _log_step("reset_stream", t0)
+            reset_stream(logs_path, start_step=start_step, batch_size=batch_size)
 
-    df = pd.DataFrame(st.session_state["log_rows"], columns=LOG_COLS)
+    if st.session_state["is_streaming"]:
+        st_autorefresh(interval=2000, key="fraud_tick")
+        handle_transaction(stream=stream, deps=deps)
+
+    out = st.session_state["last_out"]
+    if isinstance(out, dict) and out.get("skipped"):
+        st.warning(out.get("message", "Skipped transaction"))
+    elif isinstance(out, (dict, list)) and out:
+        st.json(out)
+    else:
+        st.info("No transaction yet — click **Transaction** or **Start (2s)**.")
+
+    df = pd.DataFrame(st.session_state["log_rows"])
     st.dataframe(df.iloc[::-1], width="stretch")
 
 
