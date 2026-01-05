@@ -1,10 +1,7 @@
 import numpy as np
 import shap
 
-import numpy as np
-import shap
-
-def make_top_factor_explainer(pipe):
+def top_factor_explainer(pipe):
     spec = pipe.named_steps["spec"]
     pre = pipe.named_steps["pre"]
     clf = pipe.named_steps["clf"]
@@ -13,7 +10,7 @@ def make_top_factor_explainer(pipe):
     explainer = shap.TreeExplainer(clf)
     return spec, pre, names, explainer
 
-def top_factor_fraud(spec, pre, names, explainer, X_row):
+def top_factor(spec, pre, names, explainer, X_row):
     X_row2 = spec.transform(X_row)
     X_t = pre.transform(X_row2)
 

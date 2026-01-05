@@ -1,46 +1,42 @@
 from __future__ import annotations
 
 from typing import Any, Mapping
-
+import math
 
 _ALLOWED_TYPES = {"payment", "transfer", "cash_out", "debit", "cash_in"}
 
 
-def _try_int(x: Any) -> int | None:
-    if x is None:
-        return None
-    try:
-        s = str(x).strip()
-        if s == "":
-            return None
-        return int(float(s))
-    except Exception:
-        return None
-
-
-def _try_float(x: Any) -> float | None:
-    if x is None:
-        return None
-    try:
-        s = str(x).strip()
-        if s == "":
-            return None
-        return float(s)
-    except Exception:
-        return None
-
-
-def _norm_str(x: Any, *, lower: bool = False) -> str | None:
+def _nullif_blank_str(x: Any) -> str | None:
     if x is None:
         return None
     s = str(x).strip()
-    if s == "":
+    return None if s == "" else s
+
+
+def _try_float_nullable(x: Any) -> float | None:
+    s = _nullif_blank_str(x)
+    if s is None:
         return None
-    return s.lower() if lower else s
+    try:
+        v = float(s)
+        if not math.isfinite(v):
+            return None
+        return v
+    except Exception:
+        return None
 
 
-def silver_base_row(tx: Mapping[str, Any]) -> dict[str, Any]:
+def _try_int_coerce_nullable(x: Any) -> int | None:
+    v = _try_float_nullable(x)
+    if v is None:
+        return None
+    try:
+        return int(v)
+    except Exception:
+        return None
 
+
+def silver_base(tx: Mapping[str, Any]) -> dict[str, Any]:
     step = tx.get("step")
     type_ = tx.get("type")
     amount = tx.get("amount")
@@ -51,17 +47,20 @@ def silver_base_row(tx: Mapping[str, Any]) -> dict[str, Any]:
     oldbalanceDest = tx.get("oldbalanceDest")
     newbalanceDest = tx.get("newbalanceDest")
 
-    step_t = _try_int(step)
-    type_t = _norm_str(type_, lower=True)
-    amount_t = _try_float(amount)
+    step_t = _try_int_coerce_nullable(step)
 
-    name_orig = _norm_str(nameOrig, lower=False)
-    oldbalance_orig = _try_float(oldbalanceOrg)
-    newbalance_orig = _try_float(newbalanceOrig)
+    type_s = _nullif_blank_str(type_)
+    type_t = type_s.lower() if type_s is not None else None
 
-    name_dest = _norm_str(nameDest, lower=False)
-    oldbalance_dest = _try_float(oldbalanceDest)
-    newbalance_dest = _try_float(newbalanceDest)
+    amount_t = _try_float_nullable(amount)
+
+    name_orig = _nullif_blank_str(nameOrig)
+    name_dest = _nullif_blank_str(nameDest)
+
+    oldbalance_orig = _try_float_nullable(oldbalanceOrg)
+    newbalance_orig = _try_float_nullable(newbalanceOrig)
+    oldbalance_dest = _try_float_nullable(oldbalanceDest)
+    newbalance_dest = _try_float_nullable(newbalanceDest)
 
     if type_t not in _ALLOWED_TYPES:
         type_t = None
