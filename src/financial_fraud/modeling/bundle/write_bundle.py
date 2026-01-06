@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Any, Dict
+from typing import Any, Dict, Optional
 
 from financial_fraud.modeling.bundle.write_metrics import (
     assemble_metrics_payload,
@@ -23,6 +23,7 @@ def write_bundle(
     holdout_metrics: Dict[str, Any],
     primary_metric: str,
     direction: str,
+    threshold: Optional[float] = None,
     feature_names: list[str] | None = None,
     cfg: Any = None,
 ) -> Path:
@@ -34,7 +35,7 @@ def write_bundle(
         model_type=artifact_obj.model_type,
         primary_metric=primary_metric,
         direction=direction,
-        threshold=artifact_obj.threshold,
+        threshold=threshold,
         holdout_metrics=holdout_metrics,
     )
     write_metrics_json(bundle_dir, metrics_payload)
@@ -43,6 +44,8 @@ def write_bundle(
         run_id=artifact_obj.run_id,
         artifact_version=artifact_version,
         model_type=artifact_obj.model_type,
+        role=artifact_obj.role,
+        threshold=threshold,
         feature_names=feature_names,
         cfg=cfg,
     )
