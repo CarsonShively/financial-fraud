@@ -108,6 +108,7 @@ def main(*, modeltype: str, role: str, upload: bool = False) -> None:
         threshold=tuned_threshold,
     )
 
+    y_score_train = artifact.predict_proba(X_train)[:, 1]
     y_score_hold = artifact.predict_proba(X_hold)[:, 1]
 
     gate = gate_broken(y_true=y_hold, y_score=y_score_hold)
