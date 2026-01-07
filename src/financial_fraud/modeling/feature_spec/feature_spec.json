@@ -23,7 +23,6 @@
     { "name": "dest_last_gap_hours", "dtype": "float" },
 
     { "name": "dest_state_present", "dtype": "int" },
-    { "name": "dest_is_warm_24h", "dtype": "int" },
-    { "name": "dest_window_fill_ratio_24h", "dtype": "float" }
+    { "name": "dest_is_warm_24h", "dtype": "int" }
   ]
 }

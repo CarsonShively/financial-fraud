@@ -26,7 +26,6 @@ def preprocessor() -> ColumnTransformer:
         "dest_last_gap_hours",
         "dest_state_present",
         "dest_is_warm_24h",
-        "dest_window_fill_ratio_24h",
     ]
 
     ohe_pipeline = Pipeline(
