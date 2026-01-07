@@ -24,7 +24,7 @@ SILVER_SQL_PKG = "financial_fraud.data_layers.silver"
 GOLD_SQL_PKG = "financial_fraud.data_layers.gold"
 
 BASE_SQL_FILE = "base.sql"
-TRAIN_SQL_FILE = "as_of_row.sql"
+TRAIN_SQL_FILE = "train.sql"
 
 
 def parse_args() -> argparse.Namespace:

@@ -37,6 +37,8 @@ def main() -> None:
     log.info("Starting promotion pipeline...")
 
     rows = fetch_all_run_metrics(repo_id=REPO_ID, revision=REVISION)
+    
+    rows = [r for r in rows if r.metadata.get("role") == "candidate"]
 
     try:
         best_row = get_best_contender(rows)
