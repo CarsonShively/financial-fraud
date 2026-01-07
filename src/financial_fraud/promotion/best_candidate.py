@@ -4,7 +4,6 @@ from typing import Any, Optional
 import math
 
 from financial_fraud.config import CURRENT_ARTIFACT_VERSION
-from financial_fraud.modeling.config import PRIMARY_METRIC
 
 
 def _f(x: Any) -> Optional[float]:
@@ -32,11 +31,14 @@ def artifact_version(m: dict[str, Any]) -> Optional[int]:
 
 def get_best_contender(rows: list[Any]) -> Any:
     """
-    Fraud v1 contender selection:
+    Fraud contender selection:
 
     - Only gate: metrics['artifact_version'] must equal CURRENT_ARTIFACT_VERSION
-    - Best run: highest holdout precision (holdout['precision'])
-    - Tie-break: run_id (deterministic)
+    - Rank (descending):
+        1) holdout['average_precision']
+        2) holdout['recall_at_top_1pct']
+        3) holdout['precision_at_top_1pct']
+      Tie-break: run_id (deterministic)
     """
     best: Any = None
     best_key: Optional[tuple] = None
@@ -52,13 +54,16 @@ def get_best_contender(rows: list[Any]) -> Any:
             continue
 
         hold = m.get("holdout", {}) or {}
-        hold_precision = _f(hold.get(PRIMARY_METRIC))
-        if hold_precision is None:
+
+        ap = _f(hold.get("average_precision"))
+        rec1 = _f(hold.get("recall_at_top_1pct"))
+        prec1 = _f(hold.get("precision_at_top_1pct"))
+        if ap is None or rec1 is None or prec1 is None:
             continue
 
         run_id = getattr(r, "run_id", "") or ""
 
-        key = (hold_precision, run_id)
+        key = (ap, rec1, prec1, run_id)
 
         if best_key is None or key > best_key:
             best_key = key

@@ -18,7 +18,10 @@ def load_champion_model(*, repo_id: str = REPO_ID, revision: str = REVISION) -> 
         path_in_repo=f"{champion_ptr['path_in_repo']}/model.joblib",
     )
     model = getattr(artifact, "model", artifact)
-    return model, champion_ptr
+    threshold = getattr(artifact, "threshold", None)
+    threshold = float(threshold) if threshold is not None else None
+
+    return model, champion_ptr, threshold
 
 def connect_feature_store():
     cfg = redis_config()

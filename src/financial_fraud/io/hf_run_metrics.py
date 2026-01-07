@@ -15,6 +15,8 @@ class RunRow:
     model_type: Optional[str]
     metrics: dict[str, Any]
     metrics_path: str
+    metadata: dict[str, Any]
+    metadata_path: str
     error: Optional[str] = None
 
 
@@ -29,13 +31,18 @@ def fetch_all_run_metrics(*, repo_id: str, revision: str = "main") -> list[RunRo
     api = HfApi()
     files = api.list_repo_files(repo_id=repo_id, repo_type="model", revision=revision)
 
-    metrics_paths = [f for f in files if f.startswith("runs/") and f.endswith("/metrics.json")]
+    metrics_paths = [
+        f for f in files
+        if f.startswith("runs/") and f.endswith("/metrics.json")
+    ]
 
     rows: list[RunRow] = []
     for mp in metrics_paths:
         run_id = extract_run_id_from_path(mp)
         if run_id is None:
             continue
+
+        meta_path = f"runs/{run_id}/metadata.json"
 
         try:
             metrics = read_model_json(
@@ -44,9 +51,15 @@ def fetch_all_run_metrics(*, repo_id: str, revision: str = "main") -> list[RunRo
                 path_in_repo=mp,
             )
             if metrics is None:
-                raise EntryNotFoundError("File missing after listing", response=None)
+                raise EntryNotFoundError("metrics.json missing after listing", response=None)
 
-            model_type = metrics.get("model_type")
+            metadata = read_model_json(
+                repo_id=repo_id,
+                revision=revision,
+                path_in_repo=meta_path,
+            ) or {}
+
+            model_type = metadata.get("model_type") or metrics.get("model_type")
 
             rows.append(
                 RunRow(
@@ -54,6 +67,8 @@ def fetch_all_run_metrics(*, repo_id: str, revision: str = "main") -> list[RunRo
                     model_type=model_type,
                     metrics=metrics,
                     metrics_path=mp,
+                    metadata=metadata,
+                    metadata_path=meta_path,
                 )
             )
         except Exception as e:
@@ -63,7 +78,9 @@ def fetch_all_run_metrics(*, repo_id: str, revision: str = "main") -> list[RunRo
                     model_type=None,
                     metrics={},
                     metrics_path=mp,
-                    error=f"metrics_download_or_parse_failed: {type(e).__name__}: {e}",
+                    metadata={},
+                    metadata_path=meta_path,
+                    error=f"download_or_parse_failed: {type(e).__name__}: {e}",
                 )
             )
 

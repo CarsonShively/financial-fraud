@@ -9,7 +9,6 @@ def preprocessor() -> ColumnTransformer:
     cat_ohe = ["type"]
     type_categories = [["payment", "transfer", "cash_out", "debit", "cash_in", "unknown"]]
 
-
     num_log1p_scale = [
         "amount",
         "dest_amount_sum_1h",
@@ -18,7 +17,6 @@ def preprocessor() -> ColumnTransformer:
     ]
 
     num_scale_only = [
-        "step",
         "orig_balance_delta",
         "orig_delta_minus_amount",
         "dest_balance_delta",
@@ -26,12 +24,19 @@ def preprocessor() -> ColumnTransformer:
         "dest_txn_count_1h",
         "dest_txn_count_24h",
         "dest_last_gap_hours",
+        "dest_state_present",
+        "dest_is_warm_24h",
+        "dest_window_fill_ratio_24h",
     ]
 
     ohe_pipeline = Pipeline(
         steps=[
             ("imputer", SimpleImputer(strategy="constant", fill_value="unknown")),
-            ("ohe", OneHotEncoder(categories=type_categories, handle_unknown="ignore", sparse_output=False)),
+            ("ohe", OneHotEncoder(
+                categories=type_categories,
+                handle_unknown="ignore",
+                sparse_output=False,
+            )),
         ]
     )
 

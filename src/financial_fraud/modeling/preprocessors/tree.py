@@ -13,9 +13,10 @@ def preprocessor() -> ColumnTransformer:
     ]
 
     IMPUTE_INT_COLS = [
-        "step",
         "dest_txn_count_1h",
         "dest_txn_count_24h",
+        "dest_state_present",
+        "dest_is_warm_24h",
     ]
 
     IMPUTE_FLOAT_COLS = [
@@ -28,6 +29,7 @@ def preprocessor() -> ColumnTransformer:
         "dest_amount_sum_24h",
         "dest_amount_mean_24h",
         "dest_last_gap_hours",
+        "dest_window_fill_ratio_24h",
     ]
 
     ohe_pipeline = Pipeline(

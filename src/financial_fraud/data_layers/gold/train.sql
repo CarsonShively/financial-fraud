@@ -41,7 +41,12 @@ feat AS (
       PARTITION BY b.name_dest
       ORDER BY b.step
       ROWS BETWEEN UNBOUNDED PRECEDING AND 1 PRECEDING
-    ) AS dest_last_seen_step
+    ) AS dest_last_seen_step,
+
+    MIN(b.step) OVER (
+      PARTITION BY b.name_dest
+      ROWS BETWEEN UNBOUNDED PRECEDING AND UNBOUNDED FOLLOWING
+    ) AS dest_first_seen_step
 
   FROM base b
 
@@ -84,5 +89,16 @@ SELECT
   CASE
     WHEN dest_last_seen_step IS NULL THEN NULL
     ELSE (step - dest_last_seen_step)
-  END AS dest_last_gap_hours
+  END AS dest_last_gap_hours,
+
+  CASE
+    WHEN dest_last_seen_step IS NULL THEN 0
+    ELSE 1
+  END AS dest_state_present,
+
+  CASE
+    WHEN (step - dest_first_seen_step) >= 24 THEN 1
+    ELSE 0
+  END AS dest_is_warm_24h,
+
 FROM feat;

@@ -10,7 +10,7 @@ from financial_fraud.modeling.feature_spec.apply import feature_spec
 
 class FeatureSpecTransformer(BaseEstimator, TransformerMixin):
 
-    DROP_COLS = ["name_orig", "name_dest"]
+    DROP_COLS = ["name_orig", "name_dest", "step"]
 
     def __init__(self, spec: Dict[str, Any]):
         self.spec = spec
