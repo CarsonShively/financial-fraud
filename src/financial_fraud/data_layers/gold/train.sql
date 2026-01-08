@@ -3,6 +3,7 @@ CREATE SCHEMA IF NOT EXISTS gold;
 CREATE OR REPLACE TABLE gold.train AS
 WITH base AS (
   SELECT
+    txn_id,
     is_fraud,
     step,
     type,
@@ -15,9 +16,9 @@ WITH base AS (
     newbalance_dest
   FROM silver.base
 ),
-
 feat AS (
   SELECT
+    b.txn_id,
     b.is_fraud,
     b.step,
     b.type,
@@ -31,16 +32,17 @@ feat AS (
     (b.newbalance_dest - b.oldbalance_dest) AS dest_balance_delta,
     ((b.newbalance_dest - b.oldbalance_dest) - b.amount) AS dest_delta_minus_amount,
 
-    COALESCE(COUNT(*) OVER w_dest_1h, 0) AS dest_txn_count_1h,
-    COALESCE(COUNT(*) OVER w_dest_24h, 0) AS dest_txn_count_24h,
+    COALESCE(COUNT(*) OVER w_dest_1h, 0)      AS dest_txn_count_1h,
+    COALESCE(COUNT(*) OVER w_dest_24h, 0)     AS dest_txn_count_24h,
 
-    COALESCE(SUM(b.amount) OVER w_dest_1h, 0.0) AS dest_amount_sum_1h,
+    COALESCE(SUM(b.amount) OVER w_dest_1h, 0.0)  AS dest_amount_sum_1h,
     COALESCE(SUM(b.amount) OVER w_dest_24h, 0.0) AS dest_amount_sum_24h,
 
+    -- previous STEP for this dest (unambiguous even with ties)
     MAX(b.step) OVER (
       PARTITION BY b.name_dest
       ORDER BY b.step
-      ROWS BETWEEN UNBOUNDED PRECEDING AND 1 PRECEDING
+      RANGE BETWEEN UNBOUNDED PRECEDING AND 1 PRECEDING
     ) AS dest_last_seen_step,
 
     MIN(b.step) OVER (
@@ -62,8 +64,8 @@ feat AS (
       RANGE BETWEEN 24 PRECEDING AND 1 PRECEDING
     )
 )
-
 SELECT
+  txn_id,
   is_fraud,
   step,
   type,
@@ -86,10 +88,7 @@ SELECT
     ELSE 0.0
   END AS dest_amount_mean_24h,
 
-  CASE
-    WHEN dest_last_seen_step IS NULL THEN NULL
-    ELSE (step - dest_last_seen_step)
-  END AS dest_last_gap_hours,
+  COALESCE(step - dest_last_seen_step, 0) AS dest_last_gap_hours,
 
   CASE
     WHEN dest_last_seen_step IS NULL THEN 0
@@ -99,6 +98,5 @@ SELECT
   CASE
     WHEN (step - dest_first_seen_step) >= 24 THEN 1
     ELSE 0
-  END AS dest_is_warm_24h,
-
+  END AS dest_is_warm_24h
 FROM feat;

@@ -56,6 +56,20 @@ validated AS (
   FROM typed
 )
 SELECT
+  -- NEW: stable per-row id for deterministic tie-breaking
+  row_number() OVER (
+    ORDER BY
+      step,
+      name_dest,
+      name_orig,
+      type,
+      amount,
+      oldbalance_orig,
+      newbalance_orig,
+      oldbalance_dest,
+      newbalance_dest
+  ) AS txn_id,
+
   is_fraud,
   step,
   type,

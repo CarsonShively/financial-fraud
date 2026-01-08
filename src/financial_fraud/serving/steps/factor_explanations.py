@@ -29,10 +29,7 @@ EXPLANATION_TEXT: dict[str, str] = {
     # ----------------------------
     # Basic transaction info
     # ----------------------------
-    "int__step": (
-        "This transaction occurred at a time period where fraud happened more "
-        "often in the historical data."
-    ),
+
     "float__amount": (
         "The transaction amount is unusual compared to typical transactions."
     ),

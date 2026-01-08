@@ -1,16 +1,7 @@
 import numpy as np
-from sklearn.metrics import recall_score
 
-def tune_threshold(y_true, y_score, min_recall=0.80, grid=None):
-    if grid is None:
-        grid = np.linspace(0.99, 0.01, 99)
-
-    best = None
-    for t in grid:
-        y_pred = (y_score >= t).astype(int)
-        r = recall_score(y_true, y_pred, zero_division=0)
-        if r >= min_recall:
-            best = t
-            break
-
-    return float(best) if best is not None else None
+def tune_threshold(y_score, flag_rate=0.05):
+    y_score = np.asarray(y_score)
+    if not (0.0 < flag_rate < 1.0):
+        raise ValueError("flag_rate must be in (0, 1).")
+    return float(np.quantile(y_score, 1.0 - flag_rate))

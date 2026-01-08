@@ -20,6 +20,6 @@ DEST_BUCKET_N = 24
 
 LABEL_COL = "is_fraud"
 
-CURRENT_ARTIFACT_VERSION = 4
+CURRENT_ARTIFACT_VERSION = 5
 
 TRAIN_HF_PATH = "data/gold/train.parquet"

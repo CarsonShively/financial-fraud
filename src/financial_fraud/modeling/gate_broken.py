@@ -10,13 +10,14 @@ def gate_broken(
     y_score_train=None,
     min_ap_multiple_of_prev: float = 2.0,
     min_ap_minus_prev_frac: float = 0.25,
-    too_good_ap: float = 0.90,
     shuffle_tol_frac: float = 0.50,
     max_ap_gap: float = 0.25,
     max_ap_ratio: float = 3.0,
     min_hold_ap_for_gap_check: float = 0.01,
     min_floor: float = 1e-4,
     seed: int = 0,
+    n_shuffles: int = 20,
+    too_good_ap: float | None = 0.90,
 ) -> dict:
     y_true_hold = np.asarray(y_true_hold).astype(int).ravel()
     y_score_hold = np.asarray(y_score_hold).ravel()
@@ -25,9 +26,11 @@ def gate_broken(
     ap_hold = float(average_precision_score(y_true_hold, y_score_hold))
 
     rng = np.random.default_rng(seed)
-    ap_shuf = float(
-        average_precision_score(rng.permutation(y_true_hold), y_score_hold)
-    )
+    ap_shufs = []
+    for _ in range(int(n_shuffles)):
+        ap_shufs.append(float(average_precision_score(rng.permutation(y_true_hold), y_score_hold)))
+    ap_shuf_mean = float(np.mean(ap_shufs))
+    ap_shuf_std = float(np.std(ap_shufs))
 
     min_ap = max(
         min_ap_multiple_of_prev * prev,
@@ -37,8 +40,12 @@ def gate_broken(
     shuffle_tol = max(shuffle_tol_frac * prev, min_floor)
 
     pass_signal = ap_hold >= min_ap
-    pass_shuffle = abs(ap_shuf - prev) <= shuffle_tol
-    pass_not_too_good = ap_hold < too_good_ap
+    pass_shuffle = abs(ap_shuf_mean - prev) <= shuffle_tol
+
+    if too_good_ap is None:
+        pass_not_too_good = True
+    else:
+        pass_not_too_good = ap_hold < float(too_good_ap)
 
     ap_train = None
     ap_gap = None
@@ -63,7 +70,8 @@ def gate_broken(
         "ok": ok,
         "prev": prev,
         "ap_hold": ap_hold,
-        "ap_shuf": ap_shuf,
+        "ap_shuf_mean": ap_shuf_mean,
+        "ap_shuf_std": ap_shuf_std,
         "min_ap_required": float(min_ap),
         "shuffle_tol": float(shuffle_tol),
         "pass_signal": pass_signal,
@@ -76,4 +84,6 @@ def gate_broken(
         "gap_check_ap_floor_used": float(gap_check_ap_floor),
         "pass_train_hold_gap": pass_train_hold_gap,
         "seed": int(seed),
+        "n_shuffles": int(n_shuffles),
+        "too_good_ap": too_good_ap,
     }

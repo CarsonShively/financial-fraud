@@ -3,7 +3,7 @@
     {
       "name": "type",
       "dtype": "category",
-      "categories": ["payment", "transfer", "cash_out", "debit", "cash_in"]
+      "categories": ["payment", "transfer", "cash_out", "debit", "cash_in", "unknown"]
     },
     { "name": "amount", "dtype": "float" },
 
@@ -13,8 +13,8 @@
     { "name": "dest_balance_delta", "dtype": "float" },
     { "name": "dest_delta_minus_amount", "dtype": "float" },
 
-    { "name": "dest_txn_count_1h", "dtype": "int" },
-    { "name": "dest_txn_count_24h", "dtype": "int" },
+    { "name": "dest_txn_count_1h", "dtype": "float" },
+    { "name": "dest_txn_count_24h", "dtype": "float" },
 
     { "name": "dest_amount_sum_1h", "dtype": "float" },
     { "name": "dest_amount_sum_24h", "dtype": "float" },

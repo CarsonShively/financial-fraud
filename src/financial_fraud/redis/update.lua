@@ -15,10 +15,16 @@ local N = tonumber(ARGV[3])
 
 -- Use a schema marker to avoid per-bucket HEXISTS loops
 local SCHEMA_FIELD = "dest_schema_N"
+local FIRST_SEEN_FIELD = "dest_first_seen_step"
 
 local function init_schema()
   redis.call("HSET", key, SCHEMA_FIELD, N)
   redis.call("HSET", key, "dest_last_seen_step", step)
+
+  -- NEW: record first seen step (only set if missing)
+  if redis.call("HGET", key, FIRST_SEEN_FIELD) == false then
+    redis.call("HSET", key, FIRST_SEEN_FIELD, step)
+  end
 
   -- current-step accumulators (cur_step)
   redis.call("HSET", key, "dest_cnt_cur", 0)

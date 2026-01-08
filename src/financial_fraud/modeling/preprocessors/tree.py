@@ -1,4 +1,3 @@
-import numpy as np
 from sklearn.pipeline import Pipeline
 from sklearn.impute import SimpleImputer
 from sklearn.preprocessing import OneHotEncoder
@@ -8,27 +7,22 @@ from sklearn.compose import ColumnTransformer
 def preprocessor() -> ColumnTransformer:
     type_categories = [["payment", "transfer", "cash_out", "debit", "cash_in", "unknown"]]
 
-    OHE_COLS = [
-        "type",
-    ]
+    CAT_COLS = ["type"]
 
-    IMPUTE_INT_COLS = [
-        "dest_txn_count_1h",
-        "dest_txn_count_24h",
-        "dest_state_present",
-        "dest_is_warm_24h",
-    ]
-
-    IMPUTE_FLOAT_COLS = [
+    ZERO_NUM_COLS = [
         "amount",
         "orig_balance_delta",
         "orig_delta_minus_amount",
         "dest_balance_delta",
         "dest_delta_minus_amount",
+        "dest_txn_count_1h",
+        "dest_txn_count_24h",
         "dest_amount_sum_1h",
         "dest_amount_sum_24h",
         "dest_amount_mean_24h",
         "dest_last_gap_hours",
+        "dest_state_present",
+        "dest_is_warm_24h",
     ]
 
     ohe_pipeline = Pipeline(
@@ -42,13 +36,7 @@ def preprocessor() -> ColumnTransformer:
         ]
     )
 
-    int_pipeline = Pipeline(
-        steps=[
-            ("imputer", SimpleImputer(strategy="constant", fill_value=0)),
-        ]
-    )
-
-    float_pipeline = Pipeline(
+    num_pipeline = Pipeline(
         steps=[
             ("imputer", SimpleImputer(strategy="constant", fill_value=0.0)),
         ]
@@ -56,9 +44,8 @@ def preprocessor() -> ColumnTransformer:
 
     return ColumnTransformer(
         transformers=[
-            ("cat", ohe_pipeline, OHE_COLS),
-            ("int", int_pipeline, IMPUTE_INT_COLS),
-            ("float", float_pipeline, IMPUTE_FLOAT_COLS),
+            ("cat", ohe_pipeline, CAT_COLS),
+            ("num", num_pipeline, ZERO_NUM_COLS),
         ],
         remainder="drop",
         verbose_feature_names_out=True,
