@@ -13,6 +13,8 @@ from financial_fraud.serving.steps.explain import top_factor_explainer
 from financial_fraud.stream.stream import TxnStream
 from financial_fraud.serving.serve import serve
 from financial_fraud.stream.build_log import local_log
+from financial_fraud.logging_utils import setup_logging
+setup_logging("INFO")
 
 
 @st.cache_resource
@@ -33,7 +35,10 @@ def get_lua_shas():
 
 @st.cache_resource
 def get_explainer_bundle(_model, model_run_id: str):
-    return top_factor_explainer(_model)
+    try:
+        return top_factor_explainer(_model)
+    except Exception:
+        return None
 
 
 @st.cache_data
@@ -52,6 +57,10 @@ def get_stream(parquet_path: str, start_step: int | None, batch_size: int) -> Tx
 
 
 def reset_stream(parquet_path: str, start_step: int | None, batch_size: int) -> None:
+    r, _ = get_redis()
+    r.flushdb()
+    register_lua_scripts(r)
+
     st.session_state["stream"] = TxnStream(
         parquet_path=parquet_path,
         start_step=start_step,
@@ -60,6 +69,7 @@ def reset_stream(parquet_path: str, start_step: int | None, batch_size: int) -> 
     st.session_state["last_out"] = None
     st.session_state["log_rows"] = []
     st.session_state["is_streaming"] = False
+
 
 
 def handle_transaction(*, stream: TxnStream, deps) -> None:
@@ -74,9 +84,11 @@ def handle_transaction(*, stream: TxnStream, deps) -> None:
         r=deps["r"],
         cfg=deps["cfg"],
         model=deps["model"],
+        threshold=deps["threshold"],
         explainer_bundle=deps["explainer_bundle"],
         lua_shas=deps["lua_shas"],
     )
+
 
     if result is None:
         st.session_state["last_out"] = {
@@ -91,18 +103,21 @@ def handle_transaction(*, stream: TxnStream, deps) -> None:
 
 
 def main():
+    
     st.title("Fraud Demo")
 
     st.session_state.setdefault("log_rows", [])
     st.session_state.setdefault("last_out", None)
     st.session_state.setdefault("is_streaming", False)
 
-    model, champ_ptr = get_model_and_ptr()
+    model, champ_ptr, threshold = get_model_and_ptr()
     run_id = str(champ_ptr.get("run_id", champ_ptr.get("path_in_repo", "unknown")))
     explainer_bundle = get_explainer_bundle(model, run_id)
 
     r, cfg = get_redis()
-    lua_shas = get_lua_shas()
+    r.flushdb()
+    lua_shas = register_lua_scripts(r)
+
 
     logs_path = get_logs_path(REPO_ID, ONLINE_TRANSACTIONS, revision=None)
 
@@ -112,11 +127,13 @@ def main():
 
     deps = {
         "model": model,
+        "threshold": threshold,
         "r": r,
         "cfg": cfg,
         "lua_shas": lua_shas,
         "explainer_bundle": explainer_bundle,
     }
+
 
     c1, c2, c3, c4 = st.columns(4)
     with c1:
@@ -145,7 +162,7 @@ def main():
         st.info("No transaction yet — click **Transaction** or **Start (2s)**.")
 
     df = pd.DataFrame(st.session_state["log_rows"])
-    st.dataframe(df.iloc[::-1], width="stretch")
+    st.dataframe(df.iloc[::-1], use_container_width=True)
 
 
 if __name__ == "__main__":
