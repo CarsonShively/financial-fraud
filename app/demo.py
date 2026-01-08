@@ -14,7 +14,7 @@ from financial_fraud.stream.stream import TxnStream
 from financial_fraud.serving.serve import serve
 from financial_fraud.stream.build_log import local_log
 from financial_fraud.logging_utils import setup_logging
-setup_logging("INFO")
+setup_logging("DEBUG")
 
 
 @st.cache_resource
@@ -162,7 +162,8 @@ def main():
         st.info("No transaction yet — click **Transaction** or **Start (2s)**.")
 
     df = pd.DataFrame(st.session_state["log_rows"])
-    st.dataframe(df.iloc[::-1], use_container_width=True)
+    st.dataframe(df.iloc[::-1], width="stretch")
+
 
 
 if __name__ == "__main__":
