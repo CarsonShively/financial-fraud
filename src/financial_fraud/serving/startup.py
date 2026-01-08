@@ -4,7 +4,7 @@ from typing import Any
 
 from financial_fraud.redis.connect import redis_config, connect_redis
 from financial_fraud.io.hf import read_model_json, load_model_hf
-from financial_fraud.redis.lua_scripts import SCRIPT_DEST_UPDATE 
+from financial_fraud.redis.lua.lua_scripts import SCRIPT_DEST_ADVANCE, SCRIPT_DEST_ADD 
 from financial_fraud.config import REPO_ID, REVISION
 
 def load_champion_model(*, repo_id: str = REPO_ID, revision: str = REVISION) -> tuple[Any, dict[str, Any]]:
@@ -29,5 +29,9 @@ def connect_feature_store():
     return r, cfg
 
 def register_lua_scripts(r) -> dict[str, str]:
-    sha = r.script_load(SCRIPT_DEST_UPDATE)
-    return {"dest_update": sha}
+    sha_adv = r.script_load(SCRIPT_DEST_ADVANCE)
+    sha_add = r.script_load(SCRIPT_DEST_ADD)
+    return {
+        "dest_advance": sha_adv,
+        "dest_add": sha_add,
+    }

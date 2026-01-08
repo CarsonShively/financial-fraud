@@ -12,10 +12,22 @@ from financial_fraud.serving.steps.dest_aggregates import dest_aggregates
 from financial_fraud.serving.steps.delta_features import delta_features
 from financial_fraud.serving.steps.explain import top_factor
 from financial_fraud.serving.steps.factor_explanations import EXPLANATION_TEXT
-from financial_fraud.serving.steps.lua import update_dest_aggregates
 from financial_fraud.redis.infra import make_entity_key
 
 log = logging.getLogger(__name__)
+
+
+def _parse_prev_last_seen(raw) -> int | None:
+    if raw is None:
+        return None
+    if isinstance(raw, (bytes, bytearray)):
+        raw = raw.decode("utf-8")
+    if raw == "":
+        return None
+    try:
+        return int(raw)
+    except Exception:
+        return None
 
 
 def serve(
@@ -25,19 +37,46 @@ def serve(
     cfg,
     model,
     threshold: float | None = None,
-    explainer_bundle,
+    explainer_bundle=None,
     lua_shas: dict[str, str],
 ) -> tuple[dict[str, Any], pd.DataFrame] | None:
     base = silver_base(tx)
     if not validate_base(base):
         return None
 
+    step = int(base["step"])
+    amount = float(base["amount"])
+    dest_id = base["name_dest"]
+
+    N = int(cfg.dest_bucket_N)
+    
+    dest_key = make_entity_key(cfg.live_prefix, "dest", dest_id)
+
+    sha_adv = lua_shas["dest_advance"]
+    sha_add = lua_shas["dest_add"]
+
+    r.evalsha(sha_adv, 1, dest_key, step, N)
+
+    add_res = r.evalsha(sha_add, 1, dest_key, step, str(amount), N)
+    if not (isinstance(add_res, (list, tuple)) and len(add_res) >= 2):
+        raise RuntimeError(f"dest_add did not return expected payload, got: {add_res!r}")
+
+    prev_last_seen_step = _parse_prev_last_seen(add_res[1])
+
+    dest_state = read_entity(r, cfg=cfg, dest_id=dest_id)
+
+    dest = dest_aggregates(
+        step=step,
+        dest_state=dest_state,
+        prev_last_seen_step=prev_last_seen_step,
+        N=N,
+    )
+    
+
+
+
     transaction = tx_features(base)
     delta = delta_features(base)
-
-    dest_id = base["name_dest"]
-    dest_state = read_entity(r, cfg=cfg, dest_id=dest_id)
-    dest = dest_aggregates(step=base["step"], dest_state=dest_state)
 
     row: dict[str, Any] = {**transaction, **delta, **dest}
     X = pd.DataFrame([row])
@@ -58,7 +97,6 @@ def serve(
             if explainer_bundle is not None:
                 spec, pre, names, explainer = explainer_bundle
                 factor = top_factor(spec, pre, names, explainer, X)
-
                 feat = factor.get("feature") if isinstance(factor, dict) else None
                 explanation = EXPLANATION_TEXT.get(
                     feat,
@@ -67,6 +105,7 @@ def serve(
             else:
                 explanation = "Flagged — explanation unavailable for this model type."
         except Exception:
+            log.exception("explain_failed dest=%s", dest_id)
             explanation = "Flagged — explanation missing for top factor."
 
     out = {
@@ -77,16 +116,4 @@ def serve(
     }
 
     audit_log = pd.DataFrame([out]).reindex(columns=["decision", "proba", "explanation", "tx"])
-
-    update_dest_aggregates(
-        r,
-        cfg=cfg,
-        sha_map=lua_shas,
-        dest_id=dest_id,
-        step=int(base["step"]),
-        amount=float(base["amount"]),
-        N=int(cfg.dest_bucket_N),
-    )
-
-
     return out, audit_log
