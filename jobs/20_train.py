@@ -32,7 +32,6 @@ from financial_fraud.modeling.config import (
     TUNE_END_FRAC,
     TRAIN_END_FRAC,
     SEED,
-    MIN_RECALL
 )
 
 
