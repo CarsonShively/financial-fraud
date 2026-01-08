@@ -1,0 +1,130 @@
+# feature_contract.yaml
+contract:
+  name: financial_fraud_dest_aggregates
+  version: 1
+  description: >
+    Contract for dest aggregate features. Offline computed in DuckDB/parquet.
+    Online computed from Redis state updated atomically via Lua + assembled in Python.
+
+entity:
+  type: dest
+  id_field: name_dest
+  redis_key:
+    prefix: "LIVE:"          # cfg.live_prefix (example)
+    key_format: "{prefix}{entity_type}:{entity_id}"  # make_entity_key()
+
+time:
+  field: step
+  unit: hour                # assumption: step is hours
+  step_seconds: 3600        # only relevant if you ever convert to wall clock
+  ordering:
+    primary: step
+    tie_breaker: txn_id     # REQUIRED for parity when multiple txns share same step
+
+windows:
+  # Define window edge semantics explicitly so SQL and online match.
+  # (step - W, step] means exclusive lower bound, inclusive upper bound.
+  edge_semantics: "(t-W, t]"
+  w1h:
+    hours: 1
+    buckets: 1
+  w24h:
+    hours: 24
+    buckets: 24
+
+redis_schema:
+  # These are the hash fields maintained by Lua and read by dest_aggregates().
+  last_seen_field: dest_last_seen_step
+  count_bucket_field_format: "dest_cnt_b{i}"  # i = 1..N
+  sum_bucket_field_format: "dest_sum_b{i}"    # i = 1..N
+  bucket_N_source: cfg.dest_bucket_N          # must be >= 24 for the features below
+
+features:
+  - name: dest_state_present
+    dtype: int8
+    tolerance: exact
+    default_when_missing_entity: 0
+    definition: "1 if Redis hash for dest exists at time of feature computation, else 0."
+
+  - name: dest_is_warm_24h
+    dtype: int8
+    tolerance: exact
+    default_when_missing_entity: 0
+    definition: >
+      1 if the dest has been seen within the last 24 hours (according to last_seen step),
+      else 0. Uses prev_last_seen_step/last_seen_field semantics.
+
+  - name: dest_txn_count_1h
+    dtype: float64
+    tolerance: 1e-6
+    default_when_missing_entity: 0.0
+    definition: "Count of dest transactions in the last 1 hour window (step-1, step]."
+
+  - name: dest_txn_count_24h
+    dtype: float64
+    tolerance: 1e-6
+    default_when_missing_entity: 0.0
+    definition: "Count of dest transactions in the last 24 hour window (step-24, step]."
+
+  - name: dest_amount_sum_1h
+    dtype: float64
+    tolerance: 1e-6
+    default_when_missing_entity: 0.0
+    definition: "Sum(amount) of dest transactions in (step-1, step]."
+
+  - name: dest_amount_sum_24h
+    dtype: float64
+    tolerance: 1e-6
+    default_when_missing_entity: 0.0
+    definition: "Sum(amount) of dest transactions in (step-24, step]."
+
+  - name: dest_amount_mean_24h
+    dtype: float64
+    tolerance: 1e-6
+    default_when_missing_entity: 0.0
+    definition: >
+      Mean(amount) over dest transactions in (step-24, step].
+      If count==0, mean must be 0.0 (NOT null).
+
+  - name: dest_last_gap_hours
+    dtype: float64
+    tolerance: 1e-6
+    default_when_missing_entity: null
+    definition: >
+      Gap in hours between current step and prev_last_seen_step for the dest.
+      If prev_last_seen_step is missing/None, last_gap_hours must be null.
+      NOTE: Uses the prev_last_seen_step returned by SCRIPT_DEST_ADD (before update).
+
+parity:
+  offline_source:
+    type: parquet
+    required_columns:
+      - txn_id
+      - step
+      - name_dest
+      - amount
+      - dest_txn_count_1h
+      - dest_txn_count_24h
+      - dest_amount_sum_1h
+      - dest_amount_sum_24h
+      - dest_amount_mean_24h
+      - dest_last_gap_hours
+      - dest_state_present
+      - dest_is_warm_24h
+
+  online_source:
+    type: redis_lua_python
+    required_lua_scripts:
+      - SCRIPT_DEST_ADVANCE
+      - SCRIPT_DEST_ADD
+    required_python_fn: dest_aggregates
+
+  comparison:
+    ordering_must_match: true
+    float_tolerance_default: 1e-6
+    exact_match_types:
+      - int8
+      - int16
+      - int32
+      - int64
+      - bool

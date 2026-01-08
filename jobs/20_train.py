@@ -111,7 +111,13 @@ def main(*, modeltype: str, role: str, upload: bool = False) -> None:
     y_score_train = artifact.predict_proba(X_train)[:, 1]
     y_score_hold = artifact.predict_proba(X_hold)[:, 1]
 
-    gate = gate_broken(y_true_hold=y_hold, y_score_hold=y_score_hold)
+    gate = gate_broken(
+        y_true_hold=y_hold,
+        y_score_hold=y_score_hold,
+        y_true_train=y_train,
+        y_score_train=y_score_train,
+    )
+
 
     if not gate["ok"]:
         raise ValueError(f"Upload gated: {gate}")
