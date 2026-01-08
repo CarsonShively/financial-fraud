@@ -90,15 +90,9 @@ def main(*, modeltype: str, role: str, upload: bool = False) -> None:
     y_score_tune = artifact.predict_proba(X_tune)[:, 1]
 
     tuned_threshold = tune_threshold(
-        y_true=np.asarray(y_tune),
         y_score=np.asarray(y_score_tune),
-        min_recall=MIN_RECALL,
+        flag_rate=0.05,  
     )
-
-    if tuned_threshold is None:
-        raise ValueError(
-            f"Could not find any threshold achieving recall >= {MIN_RECALL} on tune set."
-        )
 
     holdout_metrics = evaluate(
         artifact,
