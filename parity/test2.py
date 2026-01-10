@@ -37,19 +37,6 @@ def _close(a, b, tol: float = 1e-6) -> bool:
         return a == b
 
 
-def _parse_prev_last_seen(raw) -> int | None:
-    if raw is None:
-        return None
-    if isinstance(raw, (bytes, bytearray)):
-        raw = raw.decode("utf-8")
-    if raw == "":
-        return None
-    try:
-        return int(raw)
-    except Exception:
-        return None
-
-
 def main():
     local_path = download_dataset_hf(
         repo_id=REPO_ID,
@@ -72,7 +59,6 @@ def main():
         raise KeyError(f"train.parquet missing columns needed for parity test: {missing}")
 
     # Pick a RANDOM dest from those present in the dataset.
-    # (Group by ensures uniqueness; RANDOM() makes selection unbiased-ish.)
     dest_id = con.execute(
         """
         SELECT name_dest
@@ -111,23 +97,20 @@ def main():
         step = int(getattr(row, "step"))
         amount = float(getattr(row, "amount"))
 
+        # 1) ADVANCE first: align buckets to this step (no current txn added)
         r.evalsha(sha_adv, 1, key, step, N)
 
-        add_res = r.evalsha(sha_add, 1, key, step, str(amount), N)
-        if not (isinstance(add_res, (list, tuple)) and len(add_res) >= 2):
-            raise RuntimeError(f"ADD did not return prev_last_seen_step, got: {add_res!r}")
-
-        prev_last_seen_step = _parse_prev_last_seen(add_res[1])
-
+        # 2) READ aligned state
         dest_state = read_entity(r, cfg=cfg, dest_id=dest_id)
 
+        # 3) COMPUTE features from pre-add state
         online = dest_aggregates(
             step=step,
             dest_state=dest_state,
-            prev_last_seen_step=prev_last_seen_step,
             N=N,
         )
 
+        # 4) COMPARE
         for f in FEATURES:
             offline_val = getattr(row, f)
             if not _close(offline_val, online.get(f), tol=1e-6):
@@ -142,6 +125,10 @@ def main():
                         "online": online.get(f),
                     }
                 )
+
+        # 5) ADD last: apply current txn for the next row
+        r.evalsha(sha_add, 1, key, step, str(amount), N)
+
 
     if mismatches:
         out = pd.DataFrame(mismatches)
