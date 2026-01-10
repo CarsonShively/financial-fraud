@@ -38,7 +38,6 @@ feat AS (
     COALESCE(SUM(b.amount) OVER w_dest_1h, 0.0)  AS dest_amount_sum_1h,
     COALESCE(SUM(b.amount) OVER w_dest_24h, 0.0) AS dest_amount_sum_24h,
 
-    -- previous STEP for this dest (unambiguous even with ties)
     MAX(b.step) OVER (
       PARTITION BY b.name_dest
       ORDER BY b.step

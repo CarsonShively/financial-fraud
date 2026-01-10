@@ -2,76 +2,40 @@ EXPLANATION_TEXT: dict[str, str] = {
     # ----------------------------
     # Transaction type
     # ----------------------------
-    "cat__type_payment": (
-        "Payments are usually routine. In this case, the model is comparing it "
-        "to other transaction types that are more commonly linked to fraud."
-    ),
-    "cat__type_transfer": (
-        "Transfers are often used to quickly move money between accounts, "
-        "which makes them more common in fraudulent activity."
-    ),
-    "cat__type_cash_out": (
-        "Cash-out transactions are a frequent step in fraud, where money is "
-        "moved out as quickly as possible."
-    ),
-    "cat__type_debit": (
-        "Debit transactions are less common in fraud, so when they stand out, "
-        "it usually means the pattern is unusual."
-    ),
-    "cat__type_cash_in": (
-        "Cash-in transactions are usually low risk. Here, it mattered because "
-        "the behavior didn’t match what’s normally expected."
-    ),
-    "cat__type_unknown": (
-        "An unknown or rare transaction type is unusual and can increase risk."
-    ),
+    "cat__type_payment": "Payment transactions are typically lower risk than other types.",
+    "cat__type_transfer": "Transfers are commonly used to move funds quickly in fraud patterns.",
+    "cat__type_cash_out": "Cash-out activity often appears when fraudsters try to extract funds.",
+    "cat__type_debit": "Debit-type activity can be higher risk depending on the surrounding pattern.",
+    "cat__type_cash_in": "Cash-in activity is usually lower risk and can be used as a contrast signal.",
+    "cat__type_unknown": "An unknown transaction type increases uncertainty and risk.",
 
     # ----------------------------
     # Basic transaction info
     # ----------------------------
-
-    "float__amount": (
-        "The transaction amount is unusual compared to typical transactions."
-    ),
+    "num__amount": "The transaction amount is unusually large or atypical.",
 
     # ----------------------------
     # Balance behavior
     # ----------------------------
-    "float__orig_balance_delta": (
-        "The sender’s account balance changed in a way that doesn’t look normal."
-    ),
-    "float__orig_delta_minus_amount": (
-        "The sender’s balance change doesn’t line up with the transaction amount, "
-        "which is often a warning sign."
-    ),
-    "float__dest_balance_delta": (
-        "The receiver’s balance changed in an unexpected way."
-    ),
-    "float__dest_delta_minus_amount": (
-        "The receiver’s balance change doesn’t match the transaction amount, "
-        "which is unusual."
-    ),
+    "num__orig_balance_delta": "The sender’s balance changed sharply.",
+    "num__orig_delta_minus_amount": "The sender’s balance change doesn’t match the transaction amount.",
+    "num__dest_balance_delta": "The recipient’s balance shifted unexpectedly.",
+    "num__dest_delta_minus_amount": "The recipient’s balance change doesn’t align with the transfer amount.",
 
     # ----------------------------
     # Destination activity
     # ----------------------------
-    "int__dest_txn_count_1h": (
-        "The receiving account has had an unusually high number of transactions "
-        "in the last hour."
-    ),
-    "int__dest_txn_count_24h": (
-        "The receiving account has been unusually active over the last 24 hours."
-    ),
-    "float__dest_amount_sum_1h": (
-        "A large amount of money has been sent to this account in a short time."
-    ),
-    "float__dest_amount_sum_24h": (
-        "This account has received an unusually large total amount over the last day."
-    ),
-    "float__dest_amount_mean_24h": (
-        "The average transaction size for this account is higher or lower than normal."
-    ),
-    "float__dest_last_gap_hours": (
-        "The time since this account’s previous transaction is unusual."
-    ),
+    "num__dest_txn_count_1h": "The recipient received many transactions in the last hour.",
+    "num__dest_txn_count_24h": "The recipient shows unusually high activity over 24 hours.",
+    "num__dest_amount_sum_1h": "A large total value flowed to this recipient recently.",
+    "num__dest_amount_sum_24h": "The recipient accumulated a high total amount today.",
+    "num__dest_amount_mean_24h": "The recipient’s average transaction size is unusually high.",
+    "num__dest_last_gap_hours": "The time since the recipient’s last transaction is unusual.",
+
+    # ----------------------------
+    # Destination state / warm start
+    # ----------------------------
+    "num__dest_state_present": "This recipient has recent history available in the feature store.",
+    "num__dest_is_warm_24h": "This recipient has been active recently, which increases risk context.",
 }
+

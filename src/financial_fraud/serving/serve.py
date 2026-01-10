@@ -29,10 +29,6 @@ def _parse_prev_last_seen(raw) -> int | None:
     except Exception:
         return None
 
-
-# =========================
-# DEBUG HELPERS (NEW)
-# =========================
 def _b2s(x) -> str | None:
     if x is None:
         return None
@@ -60,9 +56,6 @@ def serve(
     explainer_bundle=None,
     lua_shas: dict[str, str],
 ) -> tuple[dict[str, Any], pd.DataFrame] | None:
-    # =========================
-    # ORIGINAL (UNCHANGED)
-    # =========================
     base = silver_base(tx)
     if not validate_base(base):
         return None
@@ -77,112 +70,32 @@ def serve(
     sha_adv = lua_shas["dest_advance"]
     sha_add = lua_shas["dest_add"]
 
-    # =========================
-    # DEBUG (NEW): log inputs + key sanity
-    # =========================
     if log.isEnabledFor(logging.DEBUG):
         log.debug(
             "lua_inputs dest=%s key=%s step=%s amount=%s N=%s sha_adv=%s sha_add=%s",
-            dest_id,
-            dest_key,
-            step,
-            amount,
-            N,
-            sha_adv,
-            sha_add,
+            dest_id, dest_key, step, amount, N, sha_adv, sha_add,
         )
         log.debug(
             "redis_key_before key=%s exists=%s type=%s",
-            dest_key,
-            int(r.exists(dest_key)),
-            _key_type_str(r, dest_key),
+            dest_key, int(r.exists(dest_key)), _key_type_str(r, dest_key),
         )
-
-        # pick a few high-signal fields (adjust to match your Lua schema)
-        watch_fields = [
-            "dest_last_seen_step",
-            "dest_prev_seen_step",
-            "dest_cnt_cur",
-            "dest_sum_cur",
-        ]
-
+        watch_fields = ["dest_last_seen_step", "dest_prev_seen_step", "dest_cnt_cur", "dest_sum_cur"]
         before = {f: _hget_str(r, dest_key, f) for f in watch_fields}
     else:
         watch_fields = []
         before = None
 
-    # =========================
-    # ORIGINAL (but wrapped): run Lua with exception logging
-    # =========================
     try:
         adv_res = r.evalsha(sha_adv, 1, dest_key, step, N)
     except Exception:
         log.exception(
             "lua_adv_failed dest=%s key=%s step=%s N=%s sha=%s",
-            dest_id,
-            dest_key,
-            step,
-            N,
-            sha_adv,
+            dest_id, dest_key, step, N, sha_adv,
         )
         raise
-
-    try:
-        add_res = r.evalsha(sha_add, 1, dest_key, step, str(amount), N)
-    except Exception:
-        log.exception(
-            "lua_add_failed dest=%s key=%s step=%s amount=%s N=%s sha=%s",
-            dest_id,
-            dest_key,
-            step,
-            amount,
-            N,
-            sha_add,
-        )
-        raise
-
-    # =========================
-    # DEBUG (NEW): diff watched fields + log return payloads
-    # =========================
-    if log.isEnabledFor(logging.DEBUG):
-        after = {f: _hget_str(r, dest_key, f) for f in watch_fields}
-        changed = {
-            f: (before.get(f), after.get(f))  # type: ignore[union-attr]
-            for f in watch_fields
-            if before is not None and before.get(f) != after.get(f)
-        }
-        log.debug(
-            "lua_effect dest=%s step=%s amount=%s changed=%s adv_res=%r add_res=%r",
-            dest_id,
-            step,
-            amount,
-            changed,
-            adv_res,
-            add_res,
-        )
-        log.debug(
-            "redis_key_after key=%s exists=%s type=%s",
-            dest_key,
-            int(r.exists(dest_key)),
-            _key_type_str(r, dest_key),
-        )
-
-    # =========================
-    # ORIGINAL (UNCHANGED)
-    # =========================
-    if not (isinstance(add_res, (list, tuple)) and len(add_res) >= 2):
-        raise RuntimeError(f"dest_add did not return expected payload, got: {add_res!r}")
-
-    prev_last_seen_step = _parse_prev_last_seen(add_res[1])
 
     dest_state = read_entity(r, cfg=cfg, dest_id=dest_id)
-
-    dest = dest_aggregates(
-        step=step,
-        dest_state=dest_state,
-        prev_last_seen_step=prev_last_seen_step,
-        N=N,
-    )
+    dest = dest_aggregates(step=step, dest_state=dest_state, N=N)
 
     transaction = tx_features(base)
     delta = delta_features(base)
@@ -199,7 +112,6 @@ def serve(
 
     decision = False
     explanation = "No elevated risk signals detected."
-
     if threshold is not None and proba >= threshold:
         decision = True
         try:
@@ -208,8 +120,7 @@ def serve(
                 factor = top_factor(spec, pre, names, explainer, X)
                 feat = factor.get("feature") if isinstance(factor, dict) else None
                 explanation = EXPLANATION_TEXT.get(
-                    feat,
-                    "Multiple risk signals contributed to this decision.",
+                    feat, "Multiple risk signals contributed to this decision."
                 )
             else:
                 explanation = "Flagged — explanation unavailable for this model type."
@@ -223,6 +134,31 @@ def serve(
         "proba": proba,
         "explanation": explanation,
     }
-
     audit_log = pd.DataFrame([out]).reindex(columns=["decision", "proba", "explanation", "tx"])
+
+    try:
+        add_res = r.evalsha(sha_add, 1, dest_key, step, str(amount), N)
+    except Exception:
+        log.exception(
+            "lua_add_failed dest=%s key=%s step=%s amount=%s N=%s sha=%s",
+            dest_id, dest_key, step, amount, N, sha_add,
+        )
+        raise
+
+    if log.isEnabledFor(logging.DEBUG):
+        after = {f: _hget_str(r, dest_key, f) for f in watch_fields}
+        changed = {
+            f: (before.get(f), after.get(f))
+            for f in watch_fields
+            if before is not None and before.get(f) != after.get(f)
+        }
+        log.debug(
+            "lua_effect dest=%s step=%s amount=%s changed=%s adv_res=%r add_res=%r",
+            dest_id, step, amount, changed, adv_res, add_res,
+        )
+        log.debug(
+            "redis_key_after key=%s exists=%s type=%s",
+            dest_key, int(r.exists(dest_key)), _key_type_str(r, dest_key),
+        )
+
     return out, audit_log
