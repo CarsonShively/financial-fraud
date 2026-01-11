@@ -1,103 +1,72 @@
 # feature_contract.yaml
 contract:
-  name: financial_fraud_dest_aggregates
-  version: 1
+  name: financial_fraud_dest_aggregates_simple
+  version: 2
   description: >
-    Contract for dest aggregate features. Offline computed in DuckDB/parquet.
-    Online computed from Redis state updated atomically via Lua + assembled in Python.
+    Contract for destination aggregate features.
+    Offline: DuckDB window features in gold.train.
+    Online: Redis hash updated via Lua (ADVANCE then ADD) and assembled in Python.
 
 entity:
   type: dest
   id_field: name_dest
-  redis_key:
-    prefix: "LIVE:"          # cfg.live_prefix (example)
-    key_format: "{prefix}{entity_type}:{entity_id}"  # make_entity_key()
+  redis_key_format: "{prefix}{entity_type}:{entity_id}"  # make_entity_key()
+  redis_prefix_source: cfg.live_prefix
 
 time:
   field: step
-  unit: hour                # assumption: step is hours
-  step_seconds: 3600        # only relevant if you ever convert to wall clock
-  ordering:
-    primary: step
-    tie_breaker: txn_id     # REQUIRED for parity when multiple txns share same step
+  unit: step
+  semantics: "step is an integer time bucket; no ordering exists within a step."
 
 windows:
-  # Define window edge semantics explicitly so SQL and online match.
-  # (step - W, step] means exclusive lower bound, inclusive upper bound.
-  edge_semantics: "(t-W, t]"
-  w1h:
-    hours: 1
-    buckets: 1
-  w24h:
-    hours: 24
-    buckets: 24
+  # IMPORTANT: these features exclude the current step entirely (no leakage).
+  one_step:
+    definition: "step-1 only"
+  twenty_four_step:
+    definition: "steps [step-24 .. step-1]"
 
 redis_schema:
-  # These are the hash fields maintained by Lua and read by dest_aggregates().
-  last_seen_field: dest_last_seen_step
-  count_bucket_field_format: "dest_cnt_b{i}"  # i = 1..N
-  sum_bucket_field_format: "dest_sum_b{i}"    # i = 1..N
-  bucket_N_source: cfg.dest_bucket_N          # must be >= 24 for the features below
+  N_source: cfg.dest_bucket_N            # must be >= 24
+  last_seen_field: dest_last_seen_step   # used for step-gap shifting (ADVANCE)
+  bucket_fields:
+    count: "dest_cnt_b{i}"               # i = 1..N (b1 = step-1, b2 = step-2, ...)
+    sum: "dest_sum_b{i}"                 # i = 1..N
+  cur_fields:
+    count: dest_cnt_cur                  # accumulates current step (excluded from features)
+    sum: dest_sum_cur
+
+feature_definition:
+  # Feature formulas (both sides must match these).
+  dest_txn_count_1h:  "dest_cnt_b1"
+  dest_amount_sum_1h: "dest_sum_b1"
+  dest_txn_count_24h: "sum(dest_cnt_b1..dest_cnt_b24)"
+  dest_amount_sum_24h: "sum(dest_sum_b1..dest_sum_b24)"
 
 features:
-  - name: dest_state_present
-    dtype: int8
-    tolerance: exact
-    default_when_missing_entity: 0
-    definition: "1 if Redis hash for dest exists at time of feature computation, else 0."
-
-  - name: dest_is_warm_24h
-    dtype: int8
-    tolerance: exact
-    default_when_missing_entity: 0
-    definition: >
-      1 if the dest has been seen within the last 24 hours (according to last_seen step),
-      else 0. Uses prev_last_seen_step/last_seen_field semantics.
-
   - name: dest_txn_count_1h
     dtype: float64
     tolerance: 1e-6
     default_when_missing_entity: 0.0
-    definition: "Count of dest transactions in the last 1 hour window (step-1, step]."
 
   - name: dest_txn_count_24h
     dtype: float64
     tolerance: 1e-6
     default_when_missing_entity: 0.0
-    definition: "Count of dest transactions in the last 24 hour window (step-24, step]."
 
   - name: dest_amount_sum_1h
     dtype: float64
     tolerance: 1e-6
     default_when_missing_entity: 0.0
-    definition: "Sum(amount) of dest transactions in (step-1, step]."
 
   - name: dest_amount_sum_24h
     dtype: float64
     tolerance: 1e-6
     default_when_missing_entity: 0.0
-    definition: "Sum(amount) of dest transactions in (step-24, step]."
-
-  - name: dest_amount_mean_24h
-    dtype: float64
-    tolerance: 1e-6
-    default_when_missing_entity: 0.0
-    definition: >
-      Mean(amount) over dest transactions in (step-24, step].
-      If count==0, mean must be 0.0 (NOT null).
-
-  - name: dest_last_gap_hours
-    dtype: float64
-    tolerance: 1e-6
-    default_when_missing_entity: null
-    definition: >
-      Gap in hours between current step and prev_last_seen_step for the dest.
-      If prev_last_seen_step is missing/None, last_gap_hours must be null.
-      NOTE: Uses the prev_last_seen_step returned by SCRIPT_DEST_ADD (before update).
 
 parity:
   offline_source:
     type: parquet
+    file: gold.train
     required_columns:
       - txn_id
       - step
@@ -107,10 +76,6 @@ parity:
       - dest_txn_count_24h
       - dest_amount_sum_1h
       - dest_amount_sum_24h
-      - dest_amount_mean_24h
-      - dest_last_gap_hours
-      - dest_state_present
-      - dest_is_warm_24h
 
   online_source:
     type: redis_lua_python
@@ -119,12 +84,14 @@ parity:
       - SCRIPT_DEST_ADD
     required_python_fn: dest_aggregates
 
+  execution_order:
+    # This is the core parity guarantee.
+    per_transaction:
+      - "ADVANCE(key, step, N)  # shift buckets to align with this step; does NOT add current txn"
+      - "READ(key)              # read dest_cnt_b*, dest_sum_b*"
+      - "COMPUTE(features)      # dest_aggregates()"
+      - "ADD(key, step, amount, N)  # increment cur for current step (applies to NEXT txn)"
+
   comparison:
-    ordering_must_match: true
+    ordering: "within each dest, compare rows ordered by (step, txn_id)"
     float_tolerance_default: 1e-6
-    exact_match_types:
-      - int8
-      - int16
-      - int32
-      - int64
-      - bool

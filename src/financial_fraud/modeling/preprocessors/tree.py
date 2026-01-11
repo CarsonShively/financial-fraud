@@ -19,10 +19,6 @@ def preprocessor() -> ColumnTransformer:
         "dest_txn_count_24h",
         "dest_amount_sum_1h",
         "dest_amount_sum_24h",
-        "dest_amount_mean_24h",
-        "dest_last_gap_hours",
-        "dest_state_present",
-        "dest_is_warm_24h",
     ]
 
     ohe_pipeline = Pipeline(

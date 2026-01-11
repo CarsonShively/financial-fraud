@@ -13,7 +13,6 @@ def preprocessor() -> ColumnTransformer:
         "amount",
         "dest_amount_sum_1h",
         "dest_amount_sum_24h",
-        "dest_amount_mean_24h",
     ]
 
     num_scale_only = [
@@ -23,12 +22,6 @@ def preprocessor() -> ColumnTransformer:
         "dest_delta_minus_amount",
         "dest_txn_count_1h",
         "dest_txn_count_24h",
-        "dest_last_gap_hours",
-    ]
-
-    bin_cols = [
-        "dest_state_present",
-        "dest_is_warm_24h",
     ]
 
     ohe_pipeline = Pipeline(
@@ -57,18 +50,11 @@ def preprocessor() -> ColumnTransformer:
         ]
     )
 
-    bin_pipeline = Pipeline(
-        steps=[
-            ("imputer", SimpleImputer(strategy="constant", fill_value=0)),
-        ]
-    )
-
     return ColumnTransformer(
         transformers=[
             ("cat", ohe_pipeline, cat_ohe),
             ("num_log1p", log1p_scaler_pipeline, num_log1p_scale),
             ("num", scaler_pipeline, num_scale_only),
-            ("bin", bin_pipeline, bin_cols),
         ],
         remainder="drop",
         verbose_feature_names_out=True,

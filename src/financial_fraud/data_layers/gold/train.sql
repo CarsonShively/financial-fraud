@@ -32,22 +32,11 @@ feat AS (
     (b.newbalance_dest - b.oldbalance_dest) AS dest_balance_delta,
     ((b.newbalance_dest - b.oldbalance_dest) - b.amount) AS dest_delta_minus_amount,
 
-    COALESCE(COUNT(*) OVER w_dest_1h, 0)      AS dest_txn_count_1h,
-    COALESCE(COUNT(*) OVER w_dest_24h, 0)     AS dest_txn_count_24h,
+    COUNT(*) OVER w_dest_1h  AS dest_txn_count_1h,
+    COUNT(*) OVER w_dest_24h AS dest_txn_count_24h,
 
-    COALESCE(SUM(b.amount) OVER w_dest_1h, 0.0)  AS dest_amount_sum_1h,
-    COALESCE(SUM(b.amount) OVER w_dest_24h, 0.0) AS dest_amount_sum_24h,
-
-    MAX(b.step) OVER (
-      PARTITION BY b.name_dest
-      ORDER BY b.step
-      RANGE BETWEEN UNBOUNDED PRECEDING AND 1 PRECEDING
-    ) AS dest_last_seen_step,
-
-    MIN(b.step) OVER (
-      PARTITION BY b.name_dest
-      ROWS BETWEEN UNBOUNDED PRECEDING AND UNBOUNDED FOLLOWING
-    ) AS dest_first_seen_step
+    COALESCE(SUM(b.amount) OVER w_dest_1h, 0.0)   AS dest_amount_sum_1h,
+    COALESCE(SUM(b.amount) OVER w_dest_24h, 0.0)  AS dest_amount_sum_24h
 
   FROM base b
 
@@ -80,22 +69,5 @@ SELECT
   dest_txn_count_1h,
   dest_txn_count_24h,
   dest_amount_sum_1h,
-  dest_amount_sum_24h,
-
-  CASE
-    WHEN dest_txn_count_24h > 0 THEN dest_amount_sum_24h / dest_txn_count_24h
-    ELSE 0.0
-  END AS dest_amount_mean_24h,
-
-  COALESCE(step - dest_last_seen_step, 0) AS dest_last_gap_hours,
-
-  CASE
-    WHEN dest_last_seen_step IS NULL THEN 0
-    ELSE 1
-  END AS dest_state_present,
-
-  CASE
-    WHEN (step - dest_first_seen_step) >= 24 THEN 1
-    ELSE 0
-  END AS dest_is_warm_24h
+  dest_amount_sum_24h
 FROM feat;

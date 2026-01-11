@@ -15,10 +15,6 @@ FEATURES = [
     "dest_txn_count_24h",
     "dest_amount_sum_1h",
     "dest_amount_sum_24h",
-    "dest_amount_mean_24h",
-    "dest_last_gap_hours",
-    "dest_state_present",
-    "dest_is_warm_24h",
 ]
 
 
@@ -37,7 +33,7 @@ def _close(a, b, tol: float = 1e-6) -> bool:
         return a == b
 
 
-def main(num_dests: int = 10, seed: int | None = None):
+def main(num_dests: int = 10):
     local_path = download_dataset_hf(
         repo_id=REPO_ID,
         filename=TRAIN_DATA,
@@ -119,12 +115,8 @@ def main(num_dests: int = 10, seed: int | None = None):
             # 2) READ aligned state
             dest_state = read_entity(r, cfg=cfg, dest_id=str(dest_id))
 
-            # 3) COMPUTE features from pre-add state
-            online = dest_aggregates(
-                step=step,
-                dest_state=dest_state,
-                N=N,
-            )
+            # 3) COMPUTE features from pre-add state (buckets only)
+            online = dest_aggregates(dest_state=dest_state, N=N)
 
             # 4) COMPARE
             for f in FEATURES:
@@ -144,7 +136,7 @@ def main(num_dests: int = 10, seed: int | None = None):
                     dest_mismatches += 1
 
             # 5) ADD last: apply current txn for the next row
-            r.evalsha(sha_add, 1, key, step, str(amount), N)
+            r.evalsha(sha_add, 1, key, step, amount, N)
 
         summary.append({"dest": dest_id, "rows": len(sub), "mismatches": dest_mismatches})
 
