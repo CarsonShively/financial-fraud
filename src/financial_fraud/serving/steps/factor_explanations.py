@@ -1,6 +1,6 @@
 EXPLANATION_TEXT: dict[str, str] = {
     # ----------------------------
-    # Transaction type
+    # Transaction type (one-hot)
     # ----------------------------
     "cat__type_payment": "Payment transactions are typically lower risk than other types.",
     "cat__type_transfer": "Transfers are commonly used to move funds quickly in fraud patterns.",
@@ -15,7 +15,7 @@ EXPLANATION_TEXT: dict[str, str] = {
     "num__amount": "The transaction amount is unusually large or atypical.",
 
     # ----------------------------
-    # Balance behavior
+    # Balance behavior (deltas)
     # ----------------------------
     "num__orig_balance_delta": "The sender’s balance changed sharply.",
     "num__orig_delta_minus_amount": "The sender’s balance change doesn’t match the transaction amount.",
@@ -23,19 +23,10 @@ EXPLANATION_TEXT: dict[str, str] = {
     "num__dest_delta_minus_amount": "The recipient’s balance change doesn’t align with the transfer amount.",
 
     # ----------------------------
-    # Destination activity
+    # Destination activity (aggregates)
     # ----------------------------
-    "num__dest_txn_count_1h": "The recipient received many transactions in the last hour.",
-    "num__dest_txn_count_24h": "The recipient shows unusually high activity over 24 hours.",
-    "num__dest_amount_sum_1h": "A large total value flowed to this recipient recently.",
-    "num__dest_amount_sum_24h": "The recipient accumulated a high total amount today.",
-    "num__dest_amount_mean_24h": "The recipient’s average transaction size is unusually high.",
-    "num__dest_last_gap_hours": "The time since the recipient’s last transaction is unusual.",
-
-    # ----------------------------
-    # Destination state / warm start
-    # ----------------------------
-    "num__dest_state_present": "This recipient has recent history available in the feature store.",
-    "num__dest_is_warm_24h": "This recipient has been active recently, which increases risk context.",
+    "num__dest_txn_count_1h": "The recipient received many transactions in the previous step.",
+    "num__dest_txn_count_24h": "The recipient shows unusually high activity over the last 24 steps.",
+    "num__dest_amount_sum_1h": "A large total amount flowed to this recipient in the previous step.",
+    "num__dest_amount_sum_24h": "The recipient accumulated a high total amount over the last 24 steps.",
 }
-
