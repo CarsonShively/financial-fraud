@@ -13,14 +13,11 @@ from financial_fraud.serving.steps.explain import top_factor_explainer
 from financial_fraud.stream.stream import TxnStream
 from financial_fraud.serving.serve import serve
 from financial_fraud.stream.build_log import local_log
-from financial_fraud.logging_utils import setup_logging
 from financial_fraud.serving.warm_start import warm_start
 from financial_fraud.serving.warm_up_start_step import compute_start_step
 import json
 import time
 from pathlib import Path
-
-setup_logging("DEBUG")
 
 
 @st.cache_resource
