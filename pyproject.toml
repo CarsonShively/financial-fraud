@@ -12,25 +12,40 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-serving = [
-  "streamlit>=1.52,<1.53",
-  "shap==0.50.0",
+# Core ML runtime shared by training + serving (since you load and run the model in the demo)
+ml = [
   "scikit-learn==1.6.1",
   "xgboost==3.1.2",
   "lightgbm>=4.6.0",
   "joblib",
+]
+
+# Streamlit UI/demo dependencies (kept separate for clarity)
+serving = [
+  "streamlit>=1.52,<1.53",
   "streamlit-autorefresh==1.0.1",
 ]
 
+# Model explainability (optional; keep it separate so serving can run without it if you want)
+explain = [
+  "shap==0.50.0",
+]
 
-train = [
+# Notebook / local dev tools
+dev = [
+  "jupyter",
+  "ipykernel",
+]
+
+# Convenience "one venv" install
+all = [
   "scikit-learn==1.6.1",
   "xgboost==3.1.2",
   "lightgbm>=4.6.0",
   "joblib",
-]
-
-dev = [
+  "streamlit>=1.52,<1.53",
+  "streamlit-autorefresh==1.0.1",
+  "shap==0.50.0",
   "jupyter",
   "ipykernel",
 ]

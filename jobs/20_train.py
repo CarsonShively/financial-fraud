@@ -20,7 +20,7 @@ from financial_fraud.modeling.bundle.model_artifact import ModelArtifact
 from financial_fraud.config import (
     REPO_ID,
     REVISION,
-    TRAIN_HF_PATH,
+    TRAIN_DATA,
     CURRENT_ARTIFACT_VERSION,
 )
 
@@ -67,7 +67,7 @@ def main(*, modeltype: str, role: str, upload: bool = False) -> None:
     trainer = make_trainer(modeltype, seed=SEED)
 
     local_path = download_dataset_hf(
-        repo_id=REPO_ID, filename=TRAIN_HF_PATH, revision=REVISION
+        repo_id=REPO_ID, filename=TRAIN_DATA, revision=REVISION
     )
 
     df = pd.read_parquet(local_path)
@@ -131,7 +131,7 @@ def main(*, modeltype: str, role: str, upload: bool = False) -> None:
     cfg = {
         "repo_id": REPO_ID,
         "revision": REVISION,
-        "train_hf_path": TRAIN_HF_PATH,
+        "train_hf_path": TRAIN_DATA,
         "target_col": TARGET_COL,
         "primary_metric": PRIMARY_METRIC,
         "direction": METRIC_DIRECTION,
