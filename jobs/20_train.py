@@ -139,7 +139,6 @@ def main(*, modeltype: str, role: str, upload: bool = False) -> None:
         perf_counter() - t_thr,
     )
 
-    # ---- evaluate
     t_eval = perf_counter()
     holdout_metrics = evaluate(
         artifact,
@@ -155,7 +154,6 @@ def main(*, modeltype: str, role: str, upload: bool = False) -> None:
         perf_counter() - t_eval,
     )
 
-    # ---- gate
     y_score_train = artifact.predict_proba(X_train)[:, 1]
     y_score_hold = artifact.predict_proba(X_hold)[:, 1]
     gate = gate_broken(
