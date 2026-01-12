@@ -31,7 +31,7 @@ The goal is to demonstrate **production-style ML serving**, not just model train
 The demo uses **Streamlit** to simulate:
 - A warm-start phase
 - Real-time streamed transactions
-- Per-transaction atomic feature updates
+- Per-transaction atomic feature store updates
 
 ### Run Demo
 1. make install-all
