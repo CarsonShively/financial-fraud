@@ -23,7 +23,7 @@ The goal is to demonstrate **production-style ML serving**, not just model train
     Real-time Scoring + Explanations
 
 **Key properties**
-- Offline and online pipelines share the same feature definitions
+- Offline and Online pipelines share the same feature definitions
 - Online features are updated atomically per transaction
 - Parity tests ensure training == serving
 
@@ -33,21 +33,22 @@ The demo uses **Streamlit** to simulate:
 - Real-time streamed transactions
 - Per-transaction atomic feature updates
 
-Setup: make install-all
+1. Setup: make install-all
 
-Start redis: make redis
+2. Start redis: make redis-up
 
-Run demo: make demo
+3. Run demo: make demo
 
 ## Feature Store
 
 This feature store implements rolling window aggregates using a ring-buffer strategy to ensure an up-to-date state.
 
-## Entties
+## Entities
 
 The system models two entities: origin and destination.
 
 EDA showed that:
+
     -Origin entities have a low rate of repeated interactions
 
     -Destination entities exhibit strong repeat behavior
@@ -57,7 +58,7 @@ Given the cost of maintaining state, only destination entities are stored in the
 ## Design Goal
 
 -Offline-Online parity 
--Feature-store backed serving
+-Feature-Store backed serving
 -Explainable predictions 
 -Reproducible pipelines and jobs
 
