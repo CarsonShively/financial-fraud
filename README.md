@@ -33,11 +33,12 @@ The demo uses **Streamlit** to simulate:
 - Real-time streamed transactions
 - Per-transaction atomic feature updates
 
-1. Setup: make install-all
+### Run Demo
+1. make install-all
 
-2. Start redis: make redis-up
+2. make redis-up
 
-3. Run demo: make demo
+3. make demo
 
 ## Feature Store
 
@@ -57,10 +58,10 @@ Given the cost of maintaining state, only destination entities are stored in the
 
 ## Design Goal
 
--Offline-Online parity 
--Feature-Store backed serving
--Explainable predictions 
--Reproducible pipelines and jobs
+- Offline-Online parity 
+- Feature-Store backed serving
+- Explainable predictions 
+- Reproducible pipelines and jobs
 
 ## Notes
 
