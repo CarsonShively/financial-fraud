@@ -1,9 +1,12 @@
+"""Train and upload artifact to runs archive"""
+
 import argparse
+import logging
 from pathlib import Path
 from time import perf_counter
-import pandas as pd
 
 import numpy as np
+import pandas as pd
 
 from financial_fraud.modeling.run_id import make_run_id
 from financial_fraud.modeling.metrics.report import project_metric_report
@@ -16,6 +19,8 @@ from financial_fraud.modeling.evaluate import evaluate
 from financial_fraud.modeling.gate_broken import gate_broken
 from financial_fraud.modeling.trainers.make_trainer import make_trainer, available_trainers
 from financial_fraud.modeling.bundle.model_artifact import ModelArtifact
+
+from financial_fraud.logging_utils import setup_logging
 
 from financial_fraud.config import (
     REPO_ID,
@@ -34,6 +39,7 @@ from financial_fraud.modeling.config import (
     SEED,
 )
 
+log = logging.getLogger(__name__)
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 ARTIFACT_RUNS_DIR = REPO_ROOT / "artifacts" / "runs"
@@ -55,6 +61,11 @@ def parse_args() -> argparse.Namespace:
         help="Run role. Baseline runs are not promotable.",
     )
     p.add_argument("--upload", action="store_true")
+    p.add_argument(
+        "--log-level",
+        default="INFO",
+        choices=["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"],
+    )
     return p.parse_args()
 
 
@@ -62,16 +73,32 @@ def main(*, modeltype: str, role: str, upload: bool = False) -> None:
     t0 = perf_counter()
     run_id = make_run_id()
 
-    metrics = project_metric_report()
-
-    trainer = make_trainer(modeltype, seed=SEED)
-
-    local_path = download_dataset_hf(
-        repo_id=REPO_ID, filename=TRAIN_DATA, revision=REVISION
+    log.info(
+        "train_start run_id=%s model_type=%s role=%s upload=%s artifact_version=%s",
+        run_id,
+        modeltype,
+        role,
+        upload,
+        CURRENT_ARTIFACT_VERSION,
     )
 
-    df = pd.read_parquet(local_path)
+    metrics = project_metric_report()
+    trainer = make_trainer(modeltype, seed=SEED)
 
+    t_dl = perf_counter()
+    local_path = download_dataset_hf(repo_id=REPO_ID, filename=TRAIN_DATA, revision=REVISION)
+    log.info("dataset_downloaded path=%s seconds=%.3f", local_path, perf_counter() - t_dl)
+
+    t_read = perf_counter()
+    df = pd.read_parquet(local_path)
+    log.info(
+        "dataset_loaded rows=%d cols=%d seconds=%.3f",
+        len(df),
+        df.shape[1],
+        perf_counter() - t_read,
+    )
+
+    t_split = perf_counter()
     X_train, y_train, X_tune, y_tune, X_hold, y_hold = time_split(
         df,
         target_col=TARGET_COL,
@@ -79,20 +106,41 @@ def main(*, modeltype: str, role: str, upload: bool = False) -> None:
         tune_frac=TUNE_END_FRAC,
         gap_steps=GAP_STEPS,
     )
+    log.info(
+        "split_done train=%d tune=%d hold=%d gap_steps=%s seconds=%.3f",
+        len(X_train),
+        len(X_tune),
+        len(X_hold),
+        GAP_STEPS,
+        perf_counter() - t_split,
+    )
 
+    t_fit = perf_counter()
     artifact, feature_names = fit_pipeline(
         build_pipeline=trainer.build_pipeline,
         X=X_train,
         y=y_train,
     )
-
-    y_score_tune = artifact.predict_proba(X_tune)[:, 1]
-
-    tuned_threshold = tune_threshold(
-        y_score=np.asarray(y_score_tune),
-        flag_rate=0.05,  
+    log.info(
+        "fit_done features=%d seconds=%.3f",
+        0 if feature_names is None else len(feature_names),
+        perf_counter() - t_fit,
     )
 
+    t_thr = perf_counter()
+    y_score_tune = artifact.predict_proba(X_tune)[:, 1]
+    tuned_threshold = tune_threshold(
+        y_score=np.asarray(y_score_tune),
+        flag_rate=0.05,
+    )
+    log.info(
+        "threshold_tuned threshold=%s flag_rate=0.05 seconds=%.3f",
+        tuned_threshold,
+        perf_counter() - t_thr,
+    )
+
+    # ---- evaluate
+    t_eval = perf_counter()
     holdout_metrics = evaluate(
         artifact,
         X_hold,
@@ -100,21 +148,26 @@ def main(*, modeltype: str, role: str, upload: bool = False) -> None:
         metrics=metrics,
         threshold=tuned_threshold,
     )
+    log.info(
+        "eval_done primary_metric=%s value=%s seconds=%.3f",
+        PRIMARY_METRIC,
+        holdout_metrics.get(PRIMARY_METRIC),
+        perf_counter() - t_eval,
+    )
 
+    # ---- gate
     y_score_train = artifact.predict_proba(X_train)[:, 1]
     y_score_hold = artifact.predict_proba(X_hold)[:, 1]
-
     gate = gate_broken(
         y_true_hold=y_hold,
         y_score_hold=y_score_hold,
         y_true_train=y_train,
         y_score_train=y_score_train,
     )
-
+    log.info("gate_checked ok=%s gate=%s", gate.get("ok"), gate)
 
     if not gate["ok"]:
         raise ValueError(f"Upload gated: {gate}")
-
 
     artifact_obj = ModelArtifact(
         run_id=run_id,
@@ -122,7 +175,7 @@ def main(*, modeltype: str, role: str, upload: bool = False) -> None:
         model_type=modeltype,
         model=artifact,
         role=role,
-        threshold=tuned_threshold
+        threshold=tuned_threshold,
     )
 
     bundle_dir = ARTIFACT_RUNS_DIR / run_id
@@ -139,6 +192,7 @@ def main(*, modeltype: str, role: str, upload: bool = False) -> None:
         "seed": SEED,
     }
 
+    t_bundle = perf_counter()
     write_bundle(
         bundle_dir=bundle_dir,
         artifact_version=CURRENT_ARTIFACT_VERSION,
@@ -150,6 +204,7 @@ def main(*, modeltype: str, role: str, upload: bool = False) -> None:
         feature_names=feature_names,
         cfg=cfg,
     )
+    log.info("bundle_written dir=%s seconds=%.3f", bundle_dir, perf_counter() - t_bundle)
 
     required = ["model.joblib", "metrics.json", "metadata.json"]
     missing = [name for name in required if not (bundle_dir / name).exists()]
@@ -157,12 +212,18 @@ def main(*, modeltype: str, role: str, upload: bool = False) -> None:
         raise FileNotFoundError(f"Bundle missing required files: {missing} in {bundle_dir}")
 
     if upload:
-        upload_model_bundle(
-            bundle_dir=bundle_dir, repo_id=REPO_ID, run_id=run_id, revision=REVISION
-        )
+        t_up = perf_counter()
+        upload_model_bundle(bundle_dir=bundle_dir, repo_id=REPO_ID, run_id=run_id, revision=REVISION)
+        log.info("bundle_uploaded seconds=%.3f", perf_counter() - t_up)
 
-    _elapsed = perf_counter() - t0
+    log.info("train_success run_id=%s total_seconds=%.3f", run_id, perf_counter() - t0)
+
 
 if __name__ == "__main__":
     args = parse_args()
-    main(modeltype=args.model_type, role=args.role, upload=args.upload)
+    setup_logging(args.log_level)
+    try:
+        main(modeltype=args.model_type, role=args.role, upload=args.upload)
+    except Exception:
+        log.exception("train_failed")
+        raise

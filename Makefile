@@ -41,7 +41,7 @@ parity:
 	@$(PY) parity/test.py
 
 data: ## Run data job (UPLOAD=1 to upload)
-	@$(PY) jobs/00_data.py $(if $(filter 1,$(UPLOAD)),--upload,)
+	@$(PY) jobs/10_data.py $(if $(filter 1,$(UPLOAD)),--upload,)
 
 train: ## Train (MODEL=lr|lgb|xgb) (ROLE=baseline|candidate) (UPLOAD=1 to upload)
 	@$(PY) jobs/20_train.py \
