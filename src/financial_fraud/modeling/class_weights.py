@@ -3,9 +3,6 @@ from __future__ import annotations
 import numpy as np
 
 def compute_scale_pos_weight(y) -> float:
-    """
-    XGBoost/LGBM convention: scale_pos_weight = (#neg / #pos) computed on TRAIN ONLY.
-    """
     y = np.asarray(y)
     pos = float((y == 1).sum())
     neg = float((y == 0).sum())

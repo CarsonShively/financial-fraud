@@ -1,3 +1,7 @@
+"""
+Gate broken run from being uploaded to runs archive.
+"""
+
 import numpy as np
 from sklearn.metrics import average_precision_score
 

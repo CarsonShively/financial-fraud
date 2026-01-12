@@ -1,3 +1,7 @@
+"""
+Cache serving start up for demo to ensure load only once on startup.
+"""
+
 from __future__ import annotations
 
 from typing import Any

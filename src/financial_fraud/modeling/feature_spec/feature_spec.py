@@ -1,3 +1,7 @@
+"""
+Make feature spec contract a custom transformer to use in sklearn pipelines.
+"""
+
 from __future__ import annotations
 
 from typing import Any, Dict

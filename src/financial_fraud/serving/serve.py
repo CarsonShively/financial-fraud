@@ -1,3 +1,7 @@
+"""
+Take a transaction in run it through online pipeline and return the correctly formated log for that transaction.
+"""
+
 from __future__ import annotations
 
 from typing import Any, Mapping
@@ -7,13 +11,11 @@ import warnings
 
 from financial_fraud.serving.steps.base import silver_base
 from financial_fraud.serving.steps.validate import validate_base
-from financial_fraud.redis.reader import read_entity
 from financial_fraud.serving.steps.tx_features import tx_features
-from financial_fraud.serving.steps.dest_aggregates import dest_aggregates
 from financial_fraud.serving.steps.delta_features import delta_features
 from financial_fraud.serving.steps.explain import top_factor
 from financial_fraud.serving.steps.factor_explanations import EXPLANATION_TEXT
-from financial_fraud.redis.infra import make_entity_key
+from financial_fraud.serving.steps.entity_features import get_entity_features
 
 log = logging.getLogger(__name__)
 
@@ -36,23 +38,15 @@ def serve(
     amount = float(base["amount"])
     dest_id = base["name_dest"]
 
-    N = int(cfg.dest_bucket_N)
-    dest_key = make_entity_key(cfg.live_prefix, "dest", dest_id)
-
-    sha_adv = lua_shas["dest_advance"]
-    sha_add = lua_shas["dest_add"]
-
-    try:
-        r.evalsha(sha_adv, 1, dest_key, step, N)
-    except Exception:
-        log.exception(
-            "lua_adv_failed dest=%s key=%s step=%s N=%s sha=%s",
-            dest_id, dest_key, step, N, sha_adv,
-        )
-        raise
-
-    dest_state = read_entity(r, cfg=cfg, dest_id=dest_id)
-    dest = dest_aggregates(dest_state=dest_state, N=N)
+    dest = get_entity_features(
+        r=r,
+        cfg=cfg,
+        lua_shas=lua_shas,
+        entity_type="dest",
+        entity_id=dest_id,
+        step=step,
+        amount=amount,
+    )
 
     transaction = tx_features(base)
     delta = delta_features(base)
@@ -93,14 +87,5 @@ def serve(
         "explanation": explanation,
     }
     audit_log = pd.DataFrame([out]).reindex(columns=["decision", "proba", "explanation", "tx"])
-
-    try:
-        r.evalsha(sha_add, 1, dest_key, step, amount, N)
-    except Exception:
-        log.exception(
-            "lua_add_failed dest=%s key=%s step=%s amount=%s N=%s sha=%s",
-            dest_id, dest_key, step, amount, N, sha_add,
-        )
-        raise
 
     return out, audit_log

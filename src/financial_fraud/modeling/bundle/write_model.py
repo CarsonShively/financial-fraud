@@ -1,3 +1,5 @@
+"""Write wrapped model artifact into bundle."""
+
 from __future__ import annotations
 
 from pathlib import Path

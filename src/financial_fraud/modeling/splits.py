@@ -1,3 +1,7 @@
+"""
+Deterministic, leakage safe, time splits for train pipeline.
+"""
+
 from __future__ import annotations
 import pandas as pd
 

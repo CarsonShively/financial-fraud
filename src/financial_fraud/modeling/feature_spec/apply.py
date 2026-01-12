@@ -1,3 +1,7 @@
+"""
+Apply the feature spec as a model contract.
+"""
+
 from __future__ import annotations
 
 from typing import Any, Dict, List

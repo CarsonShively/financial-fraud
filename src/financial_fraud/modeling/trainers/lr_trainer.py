@@ -12,7 +12,6 @@ from financial_fraud.modeling.preprocessors.lr import preprocessor
 
 @dataclass(slots=True)
 class LRTrainer:
-    """Log Regression trainer implementation for the telco-churn modeling pipeline."""
     seed: int = 42
     spec: dict = field(default_factory=load_feature_spec)
 

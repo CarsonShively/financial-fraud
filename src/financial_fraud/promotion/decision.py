@@ -1,3 +1,7 @@
+"""
+Best candidate vs current contender.
+"""
+
 from __future__ import annotations
 
 from dataclasses import dataclass

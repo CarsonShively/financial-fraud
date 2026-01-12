@@ -1,3 +1,5 @@
+-- Base cleaning and normalising.
+
 CREATE SCHEMA IF NOT EXISTS silver;
 
 CREATE OR REPLACE TABLE silver.base AS
@@ -56,7 +58,6 @@ validated AS (
   FROM typed
 )
 SELECT
-  -- NEW: stable per-row id for deterministic tie-breaking
   row_number() OVER (
     ORDER BY
       step,

@@ -1,3 +1,7 @@
+"""
+Fill redis feature store by streaming last x steps from transaction log.
+"""
+
 from financial_fraud.config import REVISION, TRANSACTION_LOG, REPO_ID
 from financial_fraud.io.hf import download_dataset_hf
 from financial_fraud.stream.stream import TxnStream

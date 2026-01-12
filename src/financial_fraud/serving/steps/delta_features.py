@@ -1,3 +1,7 @@
+"""
+Assemble per transaction delta features.
+"""
+
 from __future__ import annotations
 from typing import Mapping, Any
 

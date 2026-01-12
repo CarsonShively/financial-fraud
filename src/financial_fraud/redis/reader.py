@@ -1,3 +1,7 @@
+"""
+Read entities from redis.
+"""
+
 from __future__ import annotations
 
 import redis

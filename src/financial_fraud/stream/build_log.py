@@ -1,3 +1,7 @@
+"""
+Create local log for demo transactions.
+"""
+
 import pandas as pd
 
 def local_log(rows: list[dict], one_row_df: pd.DataFrame, *, max_len: int = 200) -> list[dict]:

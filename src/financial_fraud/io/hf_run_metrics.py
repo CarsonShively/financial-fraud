@@ -1,3 +1,5 @@
+"""Load dict of run metrics from runs archieve."""
+
 from __future__ import annotations
 
 from dataclasses import dataclass

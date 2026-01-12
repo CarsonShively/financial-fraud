@@ -1,3 +1,5 @@
+"""Wrap model into an object with critical info."""
+
 from dataclasses import dataclass
 from typing import Any, Literal
 

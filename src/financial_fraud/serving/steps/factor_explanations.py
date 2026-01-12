@@ -1,30 +1,15 @@
 EXPLANATION_TEXT: dict[str, str] = {
-    # ----------------------------
-    # Transaction type (one-hot)
-    # ----------------------------
     "cat__type_payment": "Payment transactions are typically lower risk than other types.",
     "cat__type_transfer": "Transfers are commonly used to move funds quickly in fraud patterns.",
     "cat__type_cash_out": "Cash-out activity often appears when fraudsters try to extract funds.",
     "cat__type_debit": "Debit-type activity can be higher risk depending on the surrounding pattern.",
     "cat__type_cash_in": "Cash-in activity is usually lower risk and can be used as a contrast signal.",
     "cat__type_unknown": "An unknown transaction type increases uncertainty and risk.",
-
-    # ----------------------------
-    # Basic transaction info
-    # ----------------------------
     "num__amount": "The transaction amount is unusually large or atypical.",
-
-    # ----------------------------
-    # Balance behavior (deltas)
-    # ----------------------------
     "num__orig_balance_delta": "The sender’s balance changed sharply.",
     "num__orig_delta_minus_amount": "The sender’s balance change doesn’t match the transaction amount.",
     "num__dest_balance_delta": "The recipient’s balance shifted unexpectedly.",
     "num__dest_delta_minus_amount": "The recipient’s balance change doesn’t align with the transfer amount.",
-
-    # ----------------------------
-    # Destination activity (aggregates)
-    # ----------------------------
     "num__dest_txn_count_1h": "The recipient received many transactions in the previous step.",
     "num__dest_txn_count_24h": "The recipient shows unusually high activity over the last 24 steps.",
     "num__dest_amount_sum_1h": "A large total amount flowed to this recipient in the previous step.",

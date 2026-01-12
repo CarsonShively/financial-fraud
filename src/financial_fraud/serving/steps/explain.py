@@ -1,3 +1,7 @@
+"""
+Use shap to get the top feature factor for positive fraud predictions.
+"""
+
 import numpy as np
 import shap
 import warnings

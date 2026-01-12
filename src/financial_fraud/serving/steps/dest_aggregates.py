@@ -1,3 +1,7 @@
+"""
+From the read entity Dest assemble aggregate features.
+"""
+
 from __future__ import annotations
 
 from typing import Mapping, Any

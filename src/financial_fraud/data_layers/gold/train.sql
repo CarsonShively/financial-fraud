@@ -1,3 +1,5 @@
+-- Offline feature creation.
+
 CREATE SCHEMA IF NOT EXISTS gold;
 
 CREATE OR REPLACE TABLE gold.train AS

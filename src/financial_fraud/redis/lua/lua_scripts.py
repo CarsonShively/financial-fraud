@@ -1,3 +1,5 @@
+"""Atomic update lua scripts."""
+
 from __future__ import annotations
 
 from importlib import resources

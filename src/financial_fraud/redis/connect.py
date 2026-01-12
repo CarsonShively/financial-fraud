@@ -1,3 +1,7 @@
+"""
+Re-usable redis connect functions.
+"""
+
 from __future__ import annotations
 
 import redis

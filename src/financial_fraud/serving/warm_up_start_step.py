@@ -1,6 +1,8 @@
+"""
+Compute start transaction from most recent transaction for warm start history.
+"""
+
 import duckdb
-from financial_fraud.io.hf import download_dataset_hf
-from financial_fraud.config import REPO_ID, TRANSACTION_LOG, REVISION
 
 def compute_start_step(parquet_path: str, k: int) -> int:
     con = duckdb.connect()
