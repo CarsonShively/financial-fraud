@@ -48,7 +48,7 @@ def get_explainer_bundle(_model, model_run_id: str):
 def get_dataset_path(repo_id: str, filename: str, revision: str | None = None) -> str:
     return download_dataset_hf(repo_id=repo_id, filename=filename, revision=revision)
 
-PROJECT_ROOT = Path(__file__).resolve().parents[1]   # adjust parents[...] as needed
+PROJECT_ROOT = Path(__file__).resolve().parents[1]
 WARM_TIMES_PATH = PROJECT_ROOT / "eta" / "warm_start_eta.json"
 WARM_TIMES_PATH.parent.mkdir(parents=True, exist_ok=True)
 
@@ -73,17 +73,12 @@ def save_last_warm_seconds(seconds: float) -> None:
         pass
 
 def ensure_warm_started(*, r, cfg, lua_shas, warm_parquet_path: str, k: int = 48) -> int:
-    """
-    Warm start exactly once per Streamlit session (reruns won't repeat it).
-    Returns the start_step boundary used for warm start.
-    """
     cache_key = ("warm_started", warm_parquet_path, k)
     if st.session_state.get(cache_key):
         return int(st.session_state["warm_start_step"])
 
-    # Clean init for the demo session
     r.flushdb()
-    register_lua_scripts(r)  # ok even if lua_shas already computed
+    register_lua_scripts(r)
 
     start_step = compute_start_step(str(warm_parquet_path), k=k)
     warm_start(r=r, cfg=cfg, lua_shas=lua_shas, start_step=start_step)
@@ -94,7 +89,6 @@ def ensure_warm_started(*, r, cfg, lua_shas, warm_parquet_path: str, k: int = 48
 
 
 def get_stream(parquet_path: str, start_step: int | None, batch_size: int) -> TxnStream:
-    # If path/start_step/batch_size changes, rebuild the stream.
     sig = (parquet_path, start_step, batch_size)
     if st.session_state.get("stream_sig") != sig:
         st.session_state["stream_sig"] = sig
@@ -139,7 +133,6 @@ def main():
     st.session_state.setdefault("last_out", None)
     st.session_state.setdefault("is_streaming", False)
 
-    # deps
     model, champ_ptr, threshold = get_model_and_ptr()
     run_id = str(champ_ptr.get("run_id", champ_ptr.get("path_in_repo", "unknown")))
     explainer_bundle = get_explainer_bundle(model, run_id)
@@ -147,7 +140,6 @@ def main():
     r, cfg = get_redis()
     lua_shas = get_lua_shas()
 
-    # warm start dataset + apply warm start once
     warm_parquet_path = get_dataset_path(REPO_ID, TRANSACTION_LOG, revision=REVISION)
 
     status_box = st.status("Warm start", expanded=True)
@@ -160,7 +152,7 @@ def main():
         if st.session_state.get(cache_key):
             warm_step = int(st.session_state.get("warm_start_step", 0))
             status_box.update(
-                label=f"Warm start already complete ✅ (warm_step={warm_step})",
+                label=f"Warm start already complete (warm_step={warm_step})",
                 state="complete",
             )
         else:
@@ -185,16 +177,15 @@ def main():
 
             save_last_warm_seconds(dt)
             elapsed_line.caption(f"Completed in {dt:.1f}s")
-            status_box.update(label="Warm start complete ✅", state="complete")
+            status_box.update(label="Warm start complete", state="complete")
 
     except Exception as e:
-        status_box.update(label="Warm start failed ❌", state="error")
+        status_box.update(label="Warm start failed", state="error")
         st.exception(e)
         st.stop()
 
-    # live stream
     logs_path = get_dataset_path(REPO_ID, ONLINE_TRANSACTIONS, revision=None)
-    stream_start_step = warm_step + 1  # start AFTER warmup boundary
+    stream_start_step = warm_step + 1
     batch_size = 2048
     stream = get_stream(logs_path, start_step=stream_start_step, batch_size=batch_size)
 
@@ -207,7 +198,6 @@ def main():
         "explainer_bundle": explainer_bundle,
     }
 
-    # controls (auto-only)
     c1, c2 = st.columns(2)
     with c1:
         if st.button("Stream transactions (1s)"):
@@ -217,7 +207,7 @@ def main():
             st.session_state["is_streaming"] = False
 
     if st.session_state["is_streaming"]:
-        st_autorefresh(interval=1000, key="fraud_tick")  # ✅ 1 second
+        st_autorefresh(interval=1000, key="fraud_tick")
         handle_transaction(stream=stream, deps=deps)
 
     out = st.session_state["last_out"]

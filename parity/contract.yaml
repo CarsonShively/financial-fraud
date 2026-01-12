@@ -1,97 +1,39 @@
-# feature_contract.yaml
 contract:
-  name: financial_fraud_dest_aggregates_simple
+  name: financial_fraud_dest_aggregates
   version: 2
-  description: >
-    Contract for destination aggregate features.
-    Offline: DuckDB window features in gold.train.
-    Online: Redis hash updated via Lua (ADVANCE then ADD) and assembled in Python.
 
 entity:
   type: dest
   id_field: name_dest
-  redis_key_format: "{prefix}{entity_type}:{entity_id}"  # make_entity_key()
-  redis_prefix_source: cfg.live_prefix
 
 time:
   field: step
-  unit: step
-  semantics: "step is an integer time bucket; no ordering exists within a step."
+  note: "Features are computed from history only: steps < step (no current-step leakage)."
 
 windows:
-  # IMPORTANT: these features exclude the current step entirely (no leakage).
-  one_step:
-    definition: "step-1 only"
-  twenty_four_step:
-    definition: "steps [step-24 .. step-1]"
+  one_step: "step-1"
+  twenty_four_step: "step-24..step-1"
 
-redis_schema:
-  N_source: cfg.dest_bucket_N            # must be >= 24
-  last_seen_field: dest_last_seen_step   # used for step-gap shifting (ADVANCE)
+redis:
+  key_format: "{live_prefix}dest:{name_dest}"
+  N_min: 24
   bucket_fields:
-    count: "dest_cnt_b{i}"               # i = 1..N (b1 = step-1, b2 = step-2, ...)
-    sum: "dest_sum_b{i}"                 # i = 1..N
-  cur_fields:
-    count: dest_cnt_cur                  # accumulates current step (excluded from features)
-    sum: dest_sum_cur
+    cnt: "dest_cnt_b{i}"
+    sum: "dest_sum_b{i}"
 
-feature_definition:
-  # Feature formulas (both sides must match these).
-  dest_txn_count_1h:  "dest_cnt_b1"
+features:
+  dest_txn_count_1h: "dest_cnt_b1"
   dest_amount_sum_1h: "dest_sum_b1"
   dest_txn_count_24h: "sum(dest_cnt_b1..dest_cnt_b24)"
   dest_amount_sum_24h: "sum(dest_sum_b1..dest_sum_b24)"
+  default_if_missing_entity: 0.0
+  tolerance: 1e-6
 
-features:
-  - name: dest_txn_count_1h
-    dtype: float64
-    tolerance: 1e-6
-    default_when_missing_entity: 0.0
-
-  - name: dest_txn_count_24h
-    dtype: float64
-    tolerance: 1e-6
-    default_when_missing_entity: 0.0
-
-  - name: dest_amount_sum_1h
-    dtype: float64
-    tolerance: 1e-6
-    default_when_missing_entity: 0.0
-
-  - name: dest_amount_sum_24h
-    dtype: float64
-    tolerance: 1e-6
-    default_when_missing_entity: 0.0
+online_execution_order:
+  - "ADVANCE(dest_key, step, N)"
+  - "READ(dest_cnt_b*, dest_sum_b*)"
+  - "COMPUTE(dest_aggregates)"
+  - "ADD(dest_key, step, amount, N)"
 
 parity:
-  offline_source:
-    type: parquet
-    file: gold.train
-    required_columns:
-      - txn_id
-      - step
-      - name_dest
-      - amount
-      - dest_txn_count_1h
-      - dest_txn_count_24h
-      - dest_amount_sum_1h
-      - dest_amount_sum_24h
-
-  online_source:
-    type: redis_lua_python
-    required_lua_scripts:
-      - SCRIPT_DEST_ADVANCE
-      - SCRIPT_DEST_ADD
-    required_python_fn: dest_aggregates
-
-  execution_order:
-    # This is the core parity guarantee.
-    per_transaction:
-      - "ADVANCE(key, step, N)  # shift buckets to align with this step; does NOT add current txn"
-      - "READ(key)              # read dest_cnt_b*, dest_sum_b*"
-      - "COMPUTE(features)      # dest_aggregates()"
-      - "ADD(key, step, amount, N)  # increment cur for current step (applies to NEXT txn)"
-
-  comparison:
-    ordering: "within each dest, compare rows ordered by (step, txn_id)"
-    float_tolerance_default: 1e-6
+  row_order: "per dest: (step, txn_id)"

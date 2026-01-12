@@ -1,3 +1,5 @@
+"""Deterministic promotion pipeline for determining the active model."""
+
 from __future__ import annotations
 
 import argparse

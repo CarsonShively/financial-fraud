@@ -1,3 +1,7 @@
+"""
+Split initial data to simulate transaction history and online transactions.
+"""
+
 import pandas as pd
 from pathlib import Path
 from financial_fraud.io.hf import download_dataset_hf, upload_dataset_hf

@@ -1,3 +1,5 @@
+"""Test parity between offline SQL aggregate calculation and atomic lua scripts."""
+
 import duckdb
 import pandas as pd
 
@@ -5,9 +7,8 @@ from financial_fraud.io.hf import download_dataset_hf
 from financial_fraud.config import REPO_ID, TRAIN_DATA, REVISION
 from financial_fraud.redis.connect import connect_redis, parity_redis_config
 from financial_fraud.redis.lua.lua_scripts import SCRIPT_DEST_ADD, SCRIPT_DEST_ADVANCE
-from financial_fraud.serving.steps.dest_aggregates import dest_aggregates
-from financial_fraud.redis.reader import read_entity
 from financial_fraud.redis.infra import make_entity_key
+from financial_fraud.serving.steps.entity_features import get_entity_features
 
 
 FEATURES = [
@@ -76,16 +77,15 @@ def main(num_dests: int = 10):
 
     sha_adv = r.script_load(SCRIPT_DEST_ADVANCE)
     sha_add = r.script_load(SCRIPT_DEST_ADD)
-
-    N = int(cfg.dest_bucket_N)
+    lua_shas = {"dest_advance": sha_adv, "dest_add": sha_add}
 
     mismatches: list[dict] = []
     summary: list[dict] = []
 
     for dest_id in dests:
-        key = make_entity_key(cfg.live_prefix, "dest", str(dest_id))
+        dest_id = str(dest_id)
 
-        # Reset ONLY this dest's state so we can test many dests in one run
+        key = make_entity_key(cfg.live_prefix, "dest", dest_id)
         r.delete(key)
 
         sub = con.execute(
@@ -95,7 +95,7 @@ def main(num_dests: int = 10):
             WHERE name_dest = ?
             ORDER BY step, txn_id
             """,
-            [str(local_path), str(dest_id)],
+            [str(local_path), dest_id],
         ).df()
 
         if sub.empty:
@@ -109,16 +109,15 @@ def main(num_dests: int = 10):
             step = int(getattr(row, "step"))
             amount = float(getattr(row, "amount"))
 
-            # 1) ADVANCE first: align buckets to this step (no current txn added)
-            r.evalsha(sha_adv, 1, key, step, N)
+            online = get_entity_features(
+                r=r,
+                cfg=cfg,
+                dest_id=dest_id,
+                step=step,
+                amount=amount,
+                lua_shas=lua_shas,
+            )
 
-            # 2) READ aligned state
-            dest_state = read_entity(r, cfg=cfg, dest_id=str(dest_id))
-
-            # 3) COMPUTE features from pre-add state (buckets only)
-            online = dest_aggregates(dest_state=dest_state, N=N)
-
-            # 4) COMPARE
             for f in FEATURES:
                 offline_val = getattr(row, f)
                 if not _close(offline_val, online.get(f), tol=1e-6):
@@ -135,18 +134,15 @@ def main(num_dests: int = 10):
                     )
                     dest_mismatches += 1
 
-            # 5) ADD last: apply current txn for the next row
-            r.evalsha(sha_add, 1, key, step, amount, N)
-
         summary.append({"dest": dest_id, "rows": len(sub), "mismatches": dest_mismatches})
 
     if mismatches:
         out = pd.DataFrame(mismatches)
-        print(f"❌ Parity mismatches across {len(dests)} dests (first 50):")
+        print(f"Parity mismatches across {len(dests)} dests (first 50):")
         print(out.head(50).to_string(index=False))
         print(f"\nTotal mismatches: {len(out)}")
     else:
-        print(f"✅ Parity passed across {len(dests)} dests")
+        print(f"Parity passed across {len(dests)} dests")
 
     print("\nPer-dest summary (worst first):")
     s = pd.DataFrame(summary).sort_values(["mismatches", "rows"], ascending=[False, False])

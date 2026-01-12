@@ -1,3 +1,5 @@
+"""Ingest data (historical logs) -> train ready data."""
+
 from __future__ import annotations
 
 import argparse
