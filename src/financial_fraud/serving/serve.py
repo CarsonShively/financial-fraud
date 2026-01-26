@@ -74,10 +74,10 @@ def serve(
                     feat, "Multiple risk signals contributed to this decision."
                 )
             else:
-                explanation = "Flagged — explanation unavailable for this model type."
+                explanation = "Flagged - explanation unavailable for this model type."
         except Exception:
             log.exception("explain_failed dest=%s", dest_id)
-            explanation = "Flagged — explanation missing for top factor."
+            explanation = "Flagged - explanation missing for top factor."
 
     out = {
         "tx": dict(tx),

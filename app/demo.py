@@ -156,7 +156,7 @@ def main():
                 state="complete",
             )
         else:
-            status_box.update(label="Warm start (running)…", state="running")
+            status_box.update(label="Warm start (running)...", state="running")
 
             last_seconds = load_last_warm_seconds()
             if last_seconds and last_seconds > 0:
@@ -165,7 +165,7 @@ def main():
                 eta_line.caption("Estimated time: unknown (first run)")
 
             t0 = time.perf_counter()
-            with st.spinner("Warming Redis feature store…"):
+            with st.spinner("Warming Redis feature store..."):
                 warm_step = ensure_warm_started(
                     r=r,
                     cfg=cfg,
@@ -217,7 +217,7 @@ def main():
         st.json(out)
     else:
         if st.session_state["is_streaming"]:
-            st.info("Streaming…")
+            st.info("Streaming...")
         else:
             st.info("Click **Start (1s)** to begin streaming.")
 
