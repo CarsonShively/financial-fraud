@@ -1,4 +1,4 @@
-.PHONY: venv install redis-up redis-down redis-ping demo parity data train promote
+.PHONY: venv install install-dev lock redis-up redis-down redis-ping demo parity data train promote
 
 SHELL := /bin/bash
 
