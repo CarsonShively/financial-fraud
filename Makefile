@@ -1,4 +1,4 @@
-.PHONY: venv install-all redis-up redis-down redis-ping demo parity data train promote
+.PHONY: venv install redis-up redis-down redis-ping demo parity data train promote
 
 SHELL := /bin/bash
 
@@ -8,6 +8,7 @@ REDIS_PORT ?= 6380
 VENV := .venv
 PY := $(VENV)/bin/python
 PIP := $(VENV)/bin/pip
+UV   := $(VENV)/bin/uv
 
 STREAMLIT_APP ?= app/demo.py
 
@@ -19,10 +20,16 @@ MODEL ?= lr
 
 venv:
 	python3 -m venv $(VENV)
-	$(PY) -m pip install -U pip
+	$(PY) -m pip install -U pip uv
 
-install-all: venv
-	$(PIP) install -e ".[all]"
+install: venv
+	$(UV) sync
+
+install-dev: venv
+	$(UV) sync --extra dev
+
+lock: venv
+	$(UV) lock
 
 redis-up:
 	@redis-server --bind $(REDIS_HOST) --port $(REDIS_PORT) --save "" --appendonly no --daemonize yes

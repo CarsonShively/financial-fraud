@@ -42,8 +42,7 @@ def serve(
         r=r,
         cfg=cfg,
         lua_shas=lua_shas,
-        entity_type="dest",
-        entity_id=dest_id,
+        dest_id=dest_id,
         step=step,
         amount=amount,
     )
