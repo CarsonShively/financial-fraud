@@ -34,11 +34,13 @@ The demo uses **Streamlit** to simulate:
 - Per-transaction atomic feature store updates
 
 ### Run Demo
+```bash
 1. make install
 
 2. make redis-up
 
 3. make demo
+```
 
 Parity test and job commands in makefile.
 
