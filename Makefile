@@ -47,14 +47,14 @@ demo:
 parity:
 	@$(PY) parity/test.py
 
-data: ## Run data job (UPLOAD=1 to upload)
+data: ## (UPLOAD=1 to upload)
 	@$(PY) jobs/10_data.py $(if $(filter 1,$(UPLOAD)),--upload,)
 
-train: ## Train (MODEL=lr|lgb|xgb) (ROLE=baseline|candidate) (UPLOAD=1 to upload)
+train: ## (MODEL=lr|lgb|xgb) (ROLE=baseline|candidate) (UPLOAD=1 to upload)
 	@$(PY) jobs/20_train.py \
 		--model $(MODEL) \
 		--role $(ROLE) \
 		$(if $(filter 1,$(UPLOAD)),--upload,)
 
-promote: ## Promotion job (PROMOTE=1 to promote)
+promote: ## (PROMOTE=1 to promote)
 	@$(PY) jobs/30_promotion.py $(if $(filter 1,$(PROMOTE)),--promote,)

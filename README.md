@@ -40,6 +40,8 @@ The demo uses **Streamlit** to simulate:
 
 3. make demo
 
+Parity test and job commands in makefile.
+
 ## Feature Store
 
 This feature store implements rolling window aggregates using a ring-buffer strategy to ensure an up-to-date state.
