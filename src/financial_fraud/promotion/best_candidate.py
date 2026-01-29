@@ -34,16 +34,6 @@ def artifact_version(m: dict[str, Any]) -> Optional[int]:
 
 
 def get_best_contender(rows: list[Any]) -> Any:
-    """
-    Fraud contender selection:
-
-    - Only gate: metrics['artifact_version'] must equal CURRENT_ARTIFACT_VERSION
-    - Rank (descending):
-        1) holdout['average_precision']
-        2) holdout['recall_at_top_1pct']
-        3) holdout['precision_at_top_1pct']
-      Tie-break: run_id (deterministic)
-    """
     best: Any = None
     best_key: Optional[tuple] = None
 

@@ -45,14 +45,6 @@ def decide_promotion(
     champion_metrics: Optional[Dict[str, Any]],
     epsilon: float = 1e-3,
 ) -> PromotionDecision:
-    """
-    Fraud promotion policy (simple):
-
-    - Primary metric is fixed to holdout['average_precision'].
-    - If no champion: promote (bootstrap).
-    - If artifact_version differs: promote (new contract/version).
-    - Else: promote only if contender AP beats champion AP by > epsilon.
-    """
     pm = "average_precision"
     c_val = _holdout_average_precision(contender_metrics)
 
