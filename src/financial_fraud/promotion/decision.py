@@ -26,7 +26,6 @@ def _holdout_average_precision(m: Dict[str, Any]) -> float:
 
 
 def _artifact_version(m: Optional[Dict[str, Any]]) -> Optional[int]:
-    """Return artifact_version if present and parseable; else None."""
     if not m:
         return None
     v = m.get("artifact_version")
