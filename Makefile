@@ -1,7 +1,5 @@
 .PHONY: venv install install-dev lock redis-up redis-down redis-ping demo parity data train promote
 
-SHELL := /usr/bin/env bash
-
 REDIS_HOST ?= 127.0.0.1
 REDIS_PORT ?= 6380
 
